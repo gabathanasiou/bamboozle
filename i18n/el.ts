@@ -31,7 +31,7 @@ export const I18N_EL = {
     JOIN_BTN_WATCH: "ΠΑΡΑΚΟΛΟΥΘΗΣΕ",
     JOIN_BTN_CANCEL: "ΑΚΥΡΟ",
     JOIN_BTN_REJOIN: "ΕΠΙΣΤΡΟΦΗ {code}",
-    JOIN_ACTIVE_GAME: "ΕΝΕΡΓΟ ΠΑΙΧΝΙΔΙ",
+    JOIN_ACTIVE_GAME: "ΠΡΟΗΓΟΥΜΕΝΟ ΠΑΙΧΝΙΔΙ",
     JOIN_OR: "- Ή -",
     JOIN_ERROR_ROOM: "Δεν βρέθηκε δωμάτιο",
     JOIN_GAME_STARTED: "ΠΑΡΑΚΟΛΟΥΘΗΣΗ",

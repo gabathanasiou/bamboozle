@@ -230,11 +230,13 @@ export const OnlinePlayerView: React.FC<OnlinePlayerViewProps> = ({ state, actio
                                     maxLength={4}
                                     value={inputCode}
                                     onChange={(e) => {
-                                        setInputCode(e.target.value.toUpperCase());
+                                        const val = e.target.value.replace(/[^A-Za-z]/g, '').toUpperCase().slice(0, 4);
+                                        setInputCode(val);
                                         setCodeError('');
                                     }}
                                     onCompositionEnd={(e) => {
-                                        setInputCode((e.target as HTMLInputElement).value.toUpperCase());
+                                        const val = (e.target as HTMLInputElement).value.replace(/[^A-Za-z]/g, '').toUpperCase().slice(0, 4);
+                                        setInputCode(val);
                                         setCodeError('');
                                     }}
                                 />

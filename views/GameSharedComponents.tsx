@@ -740,3 +740,106 @@ export const DevPauseButton: React.FC<{ isPaused: boolean; onToggle: () => void 
         </button>
     );
 };
+
+/**
+ * Modal for hosts to manage existing active rooms or start new ones.
+ */
+export const RoomManagerModal = ({
+    rooms,
+    onRejoin,
+    onCreateNew,
+    onCancel,
+    language
+}: {
+    rooms: any[],
+    onRejoin: (code: string) => void,
+    onCreateNew: () => void,
+    onCancel: () => void,
+    language: 'en' | 'el'
+}) => {
+    const isAtLimit = rooms.length >= 2;
+    const oldestRoom = [...rooms].sort((a, b) => a.createdAt - b.createdAt)[0];
+
+    return (
+        <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-xl flex items-center justify-center p-4 md:p-8"
+        >
+            <motion.div
+                initial={{ scale: 0.9, y: 20 }}
+                animate={{ scale: 1, y: 0 }}
+                className="bg-slate-900 border-4 border-white/10 rounded-[2.5rem] shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden"
+            >
+                {/* Header */}
+                <div className="p-6 md:p-8 text-center border-b border-white/5 relative">
+                    <h2 className="text-2xl md:text-4xl font-black text-yellow-400 uppercase tracking-tight mb-2">
+                        {language === 'en' ? 'Manage Your Games' : 'Διαχείριση Παιχνιδιών'}
+                    </h2>
+                    <p className="text-white/60 font-bold uppercase text-xs md:text-sm tracking-widest">
+                        {language === 'en'
+                            ? `You have ${rooms.length} active game${rooms.length > 1 ? 's' : ''} running.`
+                            : `Έχετε ${rooms.length} ενεργ${rooms.length > 1 ? 'ά' : 'ό'} παιχνίδι${rooms.length > 1 ? 'α' : ''}.`}
+                    </p>
+                </div>
+
+                {/* Room List */}
+                <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-4 no-scrollbar">
+                    {rooms.map((rm) => (
+                        <div
+                            key={rm.roomCode}
+                            onClick={() => onRejoin(rm.roomCode)}
+                            className="bg-white/5 hover:bg-white/10 border border-white/10 rounded-3xl p-5 transition-all group flex flex-col md:flex-row items-center gap-6 cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+                        >
+                            <div className="text-center md:text-left shrink-0">
+                                <span className="text-xs font-black text-white/30 uppercase tracking-[0.3em] block mb-1">CODE</span>
+                                <span className="text-4xl md:text-5xl font-black text-yellow-400 tracking-widest">{rm.roomCode}</span>
+                            </div>
+
+                            <div className="flex-1 min-w-0 text-center md:text-left">
+                                <div className="flex flex-wrap justify-center md:justify-start gap-2 mb-3">
+                                    <span className="bg-purple-600/50 text-white text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-tighter">
+                                        {rm.phase}
+                                    </span>
+                                    <span className="bg-blue-600/50 text-white text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-tighter">
+                                        {rm.playerCount} {language === 'en' ? 'Players' : 'Παίκτες'}
+                                    </span>
+
+                                </div>
+                                <div className="text-white/40 text-[11px] font-bold uppercase tracking-wide truncate">
+                                    {rm.playerNames?.join(', ') || (language === 'en' ? 'No players yet' : 'Κανένας παίκτης ακόμα')}
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+
+                {/* Footer / Actions */}
+                <div className="p-6 md:p-8 bg-black/40 border-t border-white/5">
+                    {isAtLimit && oldestRoom && (
+                        <p className="text-center text-red-400 text-[10px] md:text-xs font-bold uppercase tracking-widest mb-4 mx-auto max-w-md">
+                            ⚠️ {language === 'en'
+                                ? `Starting a new room will push oldest room ${oldestRoom.roomCode} into a 60s grace period.`
+                                : `Ξεκινώντας νέο δωμάτιο, το παλαιότερο ${oldestRoom.roomCode} θα μπει σε 60δ χάρη.`}
+                        </p>
+                    )}
+                    <button
+                        onClick={onCreateNew}
+                        className="w-full bg-yellow-400 hover:bg-yellow-300 text-slate-900 py-4 rounded-2xl font-black text-lg md:text-xl uppercase shadow-xl active:scale-95 transition-all flex items-center justify-center gap-3 group mb-4"
+                    >
+                        <span>{language === 'en' ? 'START NEW GAME' : 'ΝΕΟ ΠΑΙΧΝΙΔΙ'}</span>
+
+                    </button>
+
+                    <button
+                        onClick={onCancel}
+                        className="w-full bg-white/5 hover:bg-white/10 text-white/40 hover:text-white py-3 rounded-2xl font-bold text-sm uppercase transition-all active:scale-95"
+                    >
+                        {language === 'en' ? 'GO BACK' : 'ΠΙΣΩ'}
+                    </button>
+                </div>
+            </motion.div>
+        </motion.div>
+    );
+};

@@ -115,7 +115,15 @@ const INITIAL_STATE: GameState = {
   isPaused: false
 };
 
-export const useGameService = (role: 'HOST' | 'PLAYER' | 'AUDIENCE', playerName?: string, initialLanguage?: 'en' | 'el') => {
+export const useGameService = (
+  role: 'HOST' | 'PLAYER' | 'AUDIENCE',
+  options: {
+    playerName?: string;
+    targetRoomCode?: string;
+    initialLanguage?: 'en' | 'el';
+  } = {}
+) => {
+  const { playerName, targetRoomCode, initialLanguage } = options;
   // Determine Server URL from Settings or Env
   const getServerUrl = () => {
     const settings = localStorage.getItem('bamboozle_settings');
@@ -193,6 +201,13 @@ export const useGameService = (role: 'HOST' | 'PLAYER' | 'AUDIENCE', playerName?
   const speechDedupRef = useRef<Record<string, number>>({});
   const lastSyncRef = useRef<number>(0);
   const isHostRef = useRef<boolean>(role === 'HOST'); // Track if we're acting as host (can change via reclaim)
+
+  // Broadcast State Helper
+  const broadcastState = (newState: GameState) => {
+    if (isHostRef.current) {
+      socketRef.current?.emit('gameStateUpdate', { roomCode: newState.roomCode, gameState: newState });
+    }
+  };
   const activeAudioRef = useRef<HTMLAudioElement | null>(null);
   const narratorAudioRef = useRef<HTMLAudioElement | null>(null);
   const premiumAudioQueueRef = useRef<{
@@ -485,10 +500,12 @@ export const useGameService = (role: 'HOST' | 'PLAYER' | 'AUDIENCE', playerName?
     }
   }, []);
 
+  const getRoomsByHost = useCallback((callback: (rooms: any[]) => void) => {
+    socketRef.current?.emit('getRoomsByHost', { hostId: playerId }, callback);
+  }, []);
+
   const checkRoomExists = (roomCode: string, callback: (exists: boolean) => void) => {
-    // console.log('[GameService] Checking if room exists:', roomCode);
     socketRef.current?.emit('checkRoom', { roomCode }, (response: { exists: boolean }) => {
-      // console.log('[GameService] Room exists check for', roomCode, 'result:', response.exists);
       callback(response.exists);
     });
   };
@@ -569,17 +586,44 @@ export const useGameService = (role: 'HOST' | 'PLAYER' | 'AUDIENCE', playerName?
         });
       };
 
-      // Always create a new room when hosting
-      socket.emit('createRoom', { hostId: playerId }, (roomCode: string) => {
-        console.log('[GameService] Room created:', roomCode, '. Saving to localStorage.');
-        localStorage.setItem('bamboozle_room_code', roomCode); // Save for rejoin
-        setState(prev => {
-          const next = { ...prev, roomCode };
-          socket.emit('gameStateUpdate', { roomCode, gameState: next });
-          return next;
+      if (targetRoomCode) {
+        // Rejoin existing room
+        console.log('[GameService] Rejoining existing room as host:', targetRoomCode);
+        socket.emit('joinRoom', { roomCode: targetRoomCode, role: 'HOST', id: playerId }, (response: any) => {
+          if (response.success) {
+            // Re-apply host-local settings (usePremiumVoices) onto the server-recovered
+            // state. The server only stores game progress, not device preferences — so
+            // without this the setting silently reverts to the default on every rejoin.
+            const restoredState: GameState = {
+              ...response.state,
+              usePremiumVoices: stateRef.current.usePremiumVoices,
+            };
+            stateRef.current = restoredState;
+            setState(restoredState);
+            isHostRef.current = true;
+            setupHostListeners();
+            // Broadcast the corrected state so clients get the right setting immediately
+            socket.emit('gameStateUpdate', { roomCode: targetRoomCode, gameState: restoredState });
+            // Resume mid-game logic if any
+            resumeGameProgression(restoredState);
+          } else {
+            console.error('[GameService] Failed to rejoin room:', response.error);
+            // Fallback to create if rejoin fails? Maybe better to error out.
+          }
         });
-      });
-      setupHostListeners();
+      } else {
+        // Create a new room
+        socket.emit('createRoom', { hostId: playerId }, (roomCode: string) => {
+          console.log('[GameService] Room created:', roomCode, '. Saving to localStorage.');
+          localStorage.setItem('bamboozle_room_code', roomCode); // Save for rejoin
+          setState(prev => {
+            const next = { ...prev, roomCode };
+            socket.emit('gameStateUpdate', { roomCode, gameState: next });
+            return next;
+          });
+        });
+        setupHostListeners();
+      }
     }
 
     // Listen for game state updates
@@ -1091,6 +1135,12 @@ export const useGameService = (role: 'HOST' | 'PLAYER' | 'AUDIENCE', playerName?
         if (role === 'HOST') {
           next.usePremiumVoices = !next.usePremiumVoices;
           sfx.play('CLICK');
+          // Persist so the setting survives page refreshes
+          try {
+            const settings = JSON.parse(localStorage.getItem('bamboozle_settings') || '{}');
+            settings.usePremiumVoices = next.usePremiumVoices;
+            localStorage.setItem('bamboozle_settings', JSON.stringify(settings));
+          } catch (_) { /* non-fatal */ }
           changed = true;
         }
         break;
@@ -1728,12 +1778,6 @@ export const useGameService = (role: 'HOST' | 'PLAYER' | 'AUDIENCE', playerName?
     }
   };
 
-  // Broadcast State Helper
-  const broadcastState = (newState: GameState) => {
-    if (isHostRef.current) {
-      socketRef.current?.emit('gameStateUpdate', { roomCode: newState.roomCode, gameState: newState });
-    }
-  };
 
   // Init Progression Manager (Late init to capture dependencies)
   useEffect(() => {
@@ -1899,6 +1943,7 @@ export const useGameService = (role: 'HOST' | 'PLAYER' | 'AUDIENCE', playerName?
       sendRestart,
       sendCategorySelection,
       checkRoomExists,
+      getRoomsByHost,
       speak,
       triggerNextPhase,
       unlockAudio,

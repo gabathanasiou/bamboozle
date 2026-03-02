@@ -15,4 +15,4 @@ export const ROUND_TIMER_SECONDS = {
 
 export const NARRATOR_SEED = "NarratorGirl";
 
-export const GITHUB_REPO = "s8y8b4rrwy-afk/bamboozle";
+export const GITHUB_REPO = "gabathanasiou/bamboozle";
