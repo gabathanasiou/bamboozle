@@ -67,7 +67,7 @@ export const SettingsView: React.FC = () => {
     };
 
     return (
-        <GameBackground className="min-h-screen text-white flex flex-col items-center p-4">
+        <GameBackground className="min-h-screen text-white flex flex-col items-center justify-center p-4">
             <div className="w-full max-w-md bg-white/10 backdrop-blur-md rounded-3xl p-6 shadow-2xl border border-white/20">
 
                 <div className="flex items-center justify-between mb-8">

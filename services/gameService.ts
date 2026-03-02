@@ -501,8 +501,20 @@ export const useGameService = (
   }, []);
 
   const getRoomsByHost = useCallback((callback: (rooms: any[]) => void) => {
-    socketRef.current?.emit('getRoomsByHost', { hostId: playerId }, callback);
-  }, []);
+    const isConnected = socketRef.current?.connected;
+    console.log(`[GameService] getRoomsByHost called. Socket ID: ${socketRef.current?.id}, Connected: ${isConnected}, PlayerID: ${playerId}`);
+
+    if (!socketRef.current) {
+      console.warn('[GameService] Cannot getRoomsByHost: socketRef.current is null');
+      callback([]);
+      return;
+    }
+
+    socketRef.current.emit('getRoomsByHost', { hostId: playerId }, (rooms: any[]) => {
+      console.log('[GameService] getRoomsByHost response:', rooms);
+      callback(rooms);
+    });
+  }, [playerId]);
 
   const checkRoomExists = (roomCode: string, callback: (exists: boolean) => void) => {
     socketRef.current?.emit('checkRoom', { roomCode }, (response: { exists: boolean }) => {
@@ -575,7 +587,21 @@ export const useGameService = (
   }, [playNextPremium, internalSpeak]);
 
   useEffect(() => {
-    const socket = io(SOCKET_URL);
+    console.log('[GameService] Initializing socket to:', SOCKET_URL);
+    const socket = io(SOCKET_URL, {
+      transports: ['websocket', 'polling'], // Allow fallback to polling
+      timeout: 10000,
+      reconnectionAttempts: 5
+    });
+
+    socket.on('connect', () => {
+      console.log('[GameService] Socket connected successfully!');
+    });
+
+    socket.on('connect_error', (err) => {
+      console.error('[GameService] Socket connection error:', err.message, err.stack);
+    });
+
     socketRef.current = socket;
     setSocket(socket);
 
@@ -613,8 +639,13 @@ export const useGameService = (
         });
       } else {
         // Create a new room
+        console.log('[GameService] Emitting createRoom for host:', playerId);
         socket.emit('createRoom', { hostId: playerId }, (roomCode: string) => {
-          console.log('[GameService] Room created:', roomCode, '. Saving to localStorage.');
+          if (!roomCode) {
+            console.error('[GameService] Server failed to return a roomCode!');
+            return;
+          }
+          console.log('[GameService] Room created successfully:', roomCode);
           localStorage.setItem('bamboozle_room_code', roomCode); // Save for rejoin
           setState(prev => {
             const next = { ...prev, roomCode };

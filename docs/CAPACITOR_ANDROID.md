@@ -137,35 +137,49 @@ useEffect(() => {
 }, []);
 ```
 
-## Step 8: Status Bar Configuration
+## Step 8: Fullscreen & Adaptive Orientation
 
-```bash
-npm install @capacitor/status-bar
-npx cap sync
-```
+For the best game experience, we hide the status bar and restrict rotation on smaller devices. This is implemented in `android/app/src/main/java/com/bamboozle/app/MainActivity.java`.
 
-```typescript
-import { StatusBar, Style } from '@capacitor/status-bar';
+- **Fullscreen**: Hides status bar via `WindowManager.LayoutParams.FLAG_FULLSCREEN`.
+- **Adaptive Orientation**: 
+  - **Phones**: Locked to Portrait (saves screen space).
+  - **Tablets** (Smallest width >= 600dp): Rotation allowed.
 
-// Match your dark theme
-StatusBar.setBackgroundColor({ color: '#0f0f23' });
-StatusBar.setStyle({ style: Style.Dark });
+### Implementation snippet:
+```java
+// Fullscreen
+getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
+        WindowManager.LayoutParams.FLAG_FULLSCREEN);
+
+// Tablet Detection
+boolean isTablet = getResources().getConfiguration().smallestScreenWidthDp >= 600;
+if (!isTablet) {
+    setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+}
 ```
 
 ## Development Workflow
 
-### Local Development (Hot Reload)
-1. Start Vite dev server: `npm run dev -- --host`
-2. Update `capacitor.config.ts` to point to your local IP
-3. Run on device/emulator via Android Studio
-4. Changes reflect live (like a browser)
+We use an environment-aware configuration in `capacitor.config.ts` to switch between local development and production bundling.
 
-### Production Build
-```bash
-npm run build          # Build Vite app
-npx cap sync android   # Sync to Android
-# Then build APK/AAB in Android Studio
-```
+### Local Development (Hot Reload)
+This allows you to see changes on the device instantly as you save code on your Mac.
+
+1.  Open `capacitor.config.ts` and set `const IS_DEV = true;`.
+2.  Start Vite dev server: `npm run dev -- --host`
+3.  Ensure the `url` in `capacitor.config.ts` matches your Mac's IP.
+4.  Sync: `npx cap sync android`
+5.  Run via Android Studio.
+
+### Production Build (Bundled)
+This bundles the code inside the app for the best performance and enables the custom "Offline Screen".
+
+1.  Open `capacitor.config.ts` and set `const IS_DEV = false;`.
+2.  Build & Sync: `npm run build && npx cap sync android`
+3.  Run via Android Studio.
+
+> **Note**: In production mode, the app uses the local `dist` folder. Any changes made to the frontend code require a full `npm run build` to be visible on the device.
 
 ## Google Play Store Setup
 

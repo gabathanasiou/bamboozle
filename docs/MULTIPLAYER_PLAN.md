@@ -1,7 +1,7 @@
 # Bamboozle — Multiplayer Platform Plan
 
-> **Status**: Planning complete. Implementation not yet started.
-> **Last updated**: 2026-02-19
+> **Status**: Implementation in progress. Phase 4 (Capacitor) complete.
+> **Last updated**: 2026-03-02
 
 ---
 
@@ -174,9 +174,11 @@ The lightest phase — small additions to the existing server.
 - [x] Configure `capacitor.config.ts`
 - [x] `npm run build && npx cap sync android`
 - [x] Open in Android Studio: `npx cap open android`
-- [ ] Test run on emulator or device
-- [ ] Add back button handler
-- [ ] Configure status bar to match dark theme
+- [x] Test run on emulator or device
+- [x] Add back button handler (via `@capacitor/app`)
+- [x] Configure status bar (Hidden for Fullscreen)
+- [x] Implement Adaptive Orientation (Portrait for phones, Auto for tablets)
+- [x] Fix cleartext traffic for local development connectivity
 
 📄 See: [`CAPACITOR_ANDROID.md`](./CAPACITOR_ANDROID.md)
 
@@ -249,7 +251,7 @@ The lightest phase — small additions to the existing server.
 | Phase 6: Play Store Submission | Pending | 3-5 hours |
 | **Remaining** | | **15-24 hours** |
 
-> Phase 1 and 4 are complete. Testing and remaining Phase 4 items (back button, status bar) needed before moving to Phase 5.
+> Phase 1 and 4 are complete. Next: Phase 2 (Links/QR) & Phase 5 (Billing).
 
 ---
 
