@@ -41,3 +41,7 @@ This skill provides instructions for using the `AssetGenerator` tool to create b
 - **Android Icons**: Set `borderRadius` to roughly 10-20% for a classic squicle look, or keep it square for adaptive icon generation.
 - **Loading Screen Stagger**: Ensure the vertical stagger is clearly visible (it staggers by +0.5 avatar height).
 - **Banner Layout**: Rotate or shuffle background avatars if the layout feels too sparse or repetitive.
+
+## Android Integration Guide
+
+For practical steps on applying your generated assets to the Android application, see the [Android Asset Integration Guide](file:///Users/gabrielathanasiou/Documents/Software Apps/bamboozle/docs/ANDROID_ASSET_GUIDE.md).

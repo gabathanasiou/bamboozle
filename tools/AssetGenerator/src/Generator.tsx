@@ -20,11 +20,12 @@ const DEFAULTS = {
         expression: 'HAPPY' as Expression,
         randomExpressions: false,
         showTitle: true,
-        bgStyle: 'gradient' as 'gradient' | 'solid',
+        bgStyle: 'game' as 'game' | 'gradient' | 'solid',
         bgColor: '#4f46e5',
         bgGradient: 'from-indigo-500 to-purple-600',
         padding: 60,
         size: 512,
+        bgTint: 0,
     },
     loading: {
         avatarSize: 80,
@@ -36,6 +37,7 @@ const DEFAULTS = {
         bgGradient: 'from-slate-900 to-slate-800',
         randomExpressions: true,
         expression: 'HAPPY' as Expression,
+        bgTint: 0,
     },
     store: {
         expression: 'HAPPY' as Expression,
@@ -45,6 +47,7 @@ const DEFAULTS = {
         bgColor: '#1e1b4b',
         bgGradient: 'from-blue-600 via-indigo-600 to-purple-800',
         avatarCount: 15,
+        bgTint: 0,
     }
 };
 
@@ -64,22 +67,29 @@ const getExpression = (seed: string, settings: any) => {
 
 const BaseBackground: React.FC<{ settings: any, children: React.ReactNode, className?: string }> = ({ settings, children, className = "" }) => {
     const bgClass = useMemo(() => {
-        if (settings.bgStyle === 'game') return 'bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900';
-        if (settings.bgStyle === 'gradient') return `bg-gradient-to-br ${settings.bgGradient}`;
+        if (settings.bgStyle === 'game') return 'bg-linear-to-br from-indigo-900 via-purple-900 to-pink-900';
+        if (settings.bgStyle === 'gradient') return `bg-linear-to-br ${settings.bgGradient}`;
         return '';
     }, [settings.bgStyle, settings.bgGradient]);
 
-    const bgStyle = useMemo(() => {
-        if (settings.bgStyle === 'solid') return { backgroundColor: settings.bgColor };
-        return {};
-    }, [settings.bgStyle, settings.bgColor]);
+    const bgStyleCurrent = useMemo(() => {
+        const style: any = {};
+        if (settings.bgStyle === 'solid') style.backgroundColor = settings.bgColor;
+        if (settings.bgStyle === 'game' && settings.bgTint) style.filter = `hue-rotate(${settings.bgTint}deg)`;
+        return style;
+    }, [settings.bgStyle, settings.bgColor, settings.bgTint]);
 
     return (
-        <div className={`w-full h-full relative overflow-hidden flex items-center justify-center ${bgClass} ${className}`} style={bgStyle}>
-            {settings.bgStyle === 'game' && (
-                <div className="absolute inset-0 z-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle, #ffffff 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
-            )}
-            {children}
+        <div className={`w-full h-full relative overflow-hidden flex items-center justify-center ${className}`}>
+            {/* Background Layer (affected by tint) */}
+            <div className={`absolute inset-0 ${bgClass}`} style={bgStyleCurrent}>
+                {settings.bgStyle === 'game' && (
+                    <div className="absolute inset-0 z-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle, #ffffff 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
+                )}
+            </div>
+            <div className="relative z-10 w-full h-full flex items-center justify-center">
+                {children}
+            </div>
         </div>
     );
 };
@@ -120,7 +130,14 @@ export const AssetGenerator: React.FC = () => {
                 cacheBust: true,
             });
             const link = document.createElement('a');
-            link.download = `bamboozle-${activeTab}-${Date.now()}.png`;
+
+            // Standard naming for @capacitor/assets compatibility
+            let filename = `bamboozle-${activeTab}.png`;
+            if (activeTab === 'icon') filename = 'icon.png';
+            if (activeTab === 'loading') filename = 'splash.png';
+            if (activeTab === 'store') filename = `store-banner-${Date.now()}.png`;
+
+            link.download = filename;
             link.href = dataUrl;
             link.click();
         }
@@ -177,7 +194,7 @@ export const AssetGenerator: React.FC = () => {
                 <div className="pt-6 border-t border-slate-800/50 mt-auto">
                     <button
                         onClick={handleDownload}
-                        className="w-full flex items-center justify-center space-x-2 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white py-3.5 rounded-xl font-bold shadow-xl shadow-emerald-500/20 transition-all active:scale-[0.98] ring-1 ring-white/10"
+                        className="w-full flex items-center justify-center space-x-2 bg-linear-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white py-3.5 rounded-xl font-bold shadow-xl shadow-emerald-500/20 transition-all active:scale-[0.98] ring-1 ring-white/10"
                     >
                         <Download className="w-5 h-5 animate-bounce-subtle" />
                         <span>Export Assets</span>
@@ -190,10 +207,10 @@ export const AssetGenerator: React.FC = () => {
                 {/* Preview Viewport */}
                 <div className="flex-1 bg-slate-950 p-12 overflow-auto flex items-center justify-center pattern-grid">
                     <div className="relative group">
-                        <div className="absolute -inset-1 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl blur-2xl opacity-20 group-hover:opacity-30 transition-opacity"></div>
+                        <div className="absolute -inset-1 bg-linear-to-r from-indigo-500 to-purple-600 rounded-2xl blur-2xl opacity-20 group-hover:opacity-30 transition-opacity"></div>
                         <div
                             ref={exportRef}
-                            className="relative shadow-2xl overflow-hidden bg-slate-900 border border-white/5"
+                            className="relative shadow-2xl overflow-hidden border border-white/5 bg-slate-950"
                             style={{
                                 width: activeTab === 'icon' ? iconSettings.size : (activeTab === 'loading' ? (loadingSettings.preset === 'tablet' ? 525 : 400) : 960),
                                 height: activeTab === 'icon' ? iconSettings.size : (activeTab === 'loading' ? (loadingSettings.preset === 'tablet' ? 700 : 700) : 540),
@@ -260,7 +277,7 @@ export const AssetGenerator: React.FC = () => {
 
 const IconAsset: React.FC<{ settings: any }> = ({ settings }) => {
     return (
-        <div className={`w-full h-full flex flex-col items-center justify-center bg-gradient-to-br ${settings.bgGradient}`}>
+        <BaseBackground settings={settings} className="flex-col">
             <div style={{ width: '60%', height: '60%', filter: 'drop-shadow(0 25px 35px rgba(0,0,0,0.3))' }}>
                 <Avatar
                     seed={NARRATOR_SEED}
@@ -270,11 +287,11 @@ const IconAsset: React.FC<{ settings: any }> = ({ settings }) => {
                 />
             </div>
             {settings.showTitle && (
-                <h1 className="mt-8 text-[4.5rem] font-[800] tracking-tighter text-white drop-shadow-[0_4px_12px_rgba(0,0,0,0.4)] px-4 text-center leading-[0.9]">
+                <h1 className="mt-8 text-[4.5rem] font-extrabold tracking-tighter text-white drop-shadow-[0_4px_12px_rgba(0,0,0,0.4)] px-4 text-center leading-[0.9]">
                     BAMBOOZLE
                 </h1>
             )}
-        </div>
+        </BaseBackground>
     );
 };
 
@@ -460,7 +477,7 @@ const RangeSlider: React.FC<{
 const ColorOption: React.FC<{ value: string, active: boolean, onClick: () => void }> = ({ value, active, onClick }) => (
     <button
         onClick={onClick}
-        className={`w-10 h-10 rounded-full bg-gradient-to-br ${value} border-2 transition-all p-1 active:scale-90 ${active ? 'border-white scale-125 shadow-lg shadow-white/10' : 'border-transparent opacity-60 hover:opacity-100 hover:scale-110'}`}
+        className={`w-10 h-10 rounded-full bg-linear-to-br ${value} border-2 transition-all p-1 active:scale-90 ${active ? 'border-white scale-125 shadow-lg shadow-white/10' : 'border-transparent opacity-60 hover:opacity-100 hover:scale-110'}`}
     />
 );
 
@@ -536,6 +553,21 @@ const AppearanceControls: React.FC<{ settings: any, setSettings: (val: any) => v
                 </div>
 
                 <div className="mt-4 animate-in fade-in duration-300">
+                    {settings.bgStyle === 'game' && (
+                        <div className="mt-2 animate-in fade-in zoom-in-95 duration-200">
+                            <RangeSlider
+                                label="Background Tint"
+                                min={0} max={360}
+                                value={settings.bgTint || 0}
+                                defaultValue={0}
+                                unit="°"
+                                onChange={(val) => setSettings({ ...settings, bgTint: val })}
+                            />
+                            <p className="text-[10px] text-slate-500 mt-2 italic px-1">
+                                Shifts the master gradient hue while keeping the game aesthetic.
+                            </p>
+                        </div>
+                    )}
                     {settings.bgStyle === 'gradient' && (
                         <div className="flex flex-wrap gap-4 px-2">
                             {gradients.map((grad) => (
@@ -543,7 +575,7 @@ const AppearanceControls: React.FC<{ settings: any, setSettings: (val: any) => v
                                     key={grad}
                                     value={grad}
                                     active={settings.bgGradient === grad}
-                                    onClick={() => setSettings({ ...settings, bgGradient: grad })}
+                                    onClick={() => setSettings({ ...settings, bgGradient: grad.replace('bg-linear', 'bg-gradient') })}
                                 />
                             ))}
                         </div>
@@ -576,7 +608,7 @@ const AppearanceControls: React.FC<{ settings: any, setSettings: (val: any) => v
 const IconControls: React.FC<{ settings: any, setSettings: (val: any) => void }> = ({ settings, setSettings }) => {
     return (
         <div className="space-y-12">
-            <AppearanceControls settings={settings} setSettings={setSettings} />
+            <AppearanceControls settings={settings} setSettings={setSettings} showGameBg />
 
             <ControlGroup label="Layout">
                 <button
