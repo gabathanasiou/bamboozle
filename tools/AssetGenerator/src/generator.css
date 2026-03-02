@@ -1,0 +1,44 @@
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap');
+
+/* Tailwind v4 CSS-first config */
+@theme {
+    --font-sans: "Outfit", ui-sans-serif, system-ui, sans-serif;
+
+    --radius-xl: 24px;
+    --radius-2xl: 32px;
+
+    --animate-spin-slow: spin 8s linear infinite;
+    --animate-bounce-subtle: bounce-subtle 1.5s infinite alternate ease-in-out;
+
+    @keyframes bounce-subtle {
+        from {
+            transform: translateY(0);
+        }
+
+        to {
+            transform: translateY(-5px);
+        }
+    }
+}
+
+/* Ensure content is detected in v4 */
+@source "../../components/**/*.{js,ts,jsx,tsx}";
+@source "../../views/**/*.{js,ts,jsx,tsx}";
+@source "../../constants.ts";
+@source "../../types.ts";
+@source "../**/*.{js,ts,jsx,tsx,html}";
+
+:root {
+    background: #0f172a;
+    color: #f8fafc;
+}
+
+html,
+body,
+#root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+}
