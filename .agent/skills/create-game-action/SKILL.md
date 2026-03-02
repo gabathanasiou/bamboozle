@@ -83,15 +83,16 @@ const handlePowerup = () => {
 
 **Note:** Ensure `gameService.ts` on the Host side is listening for this event. Most player events are automatically routed to `processHostEvent` via the `playerEvent` listener.
 
-## 4. (Optional) Server-Side Validation
+## 5. Native Considerations (Android/Capacitor)
 
-### File: `server/index.js` (or currently centralized in Host logic)
-
-If the action requires secure validation or broadcast to specific rooms (beyond the standard `playerEvent` relay), update the server logic.
-*Current architecture relies heavily on the Host client for game logic, so this step is often skipped for gameplay features unless they impact room management.*
+When adding a new action that affects the UI, remember:
+- **Haptic Feedback**: For high-impact actions (scoring, winning), consider adding haptic feedback using `@capacitor/haptics`.
+- **Back Button**: If your action opens a modal or a sub-view, ensure it integrates with the back button handler in `App.tsx`.
+- **Safe Areas**: Ensure any new UI elements (like a "Powerup" tray) respect `env(safe-area-inset-bottom)`.
 
 ## Checklist
 - [ ] Action added to `GameEvent` in `types.ts`.
 - [ ] Logic implemented in `processHostEvent` in `gameService.ts`.
 - [ ] UI component triggers the action.
+- [ ] Tested for mobile responsiveness (safe areas, tap targets).
 - [ ] (If applicable) Sound effect added in `processHostEvent`.

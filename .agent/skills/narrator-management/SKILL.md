@@ -71,6 +71,12 @@ const line = getNarratorPhrase(state.language, 'GENERIC_PRAISE', {});
 speak(line);
 ```
 
+### Android/Capacitor Audio
+The Android app runs in a WebView. While it behaves similarly to Chrome, there are native considerations:
+- **Local Dev Server**: In development, audio from `http://localhost:3001` will fail on Android. You **must** use the Mac's local IP (e.g., `http://192.168.x.x:3001`).
+- **Media Playback**: Capacitor requires `android:usesCleartextTraffic="true"` to load audio from non-HTTPS sources during development.
+- **Hardware Volume**: The system volume buttons on Android will control the "Media" volume for the game.
+
 ## 4. Debugging & Maintenance
 
 ### Common Issues

@@ -76,19 +76,17 @@ You need logic to enter and exit this phase. This usually happens in `processHos
 1.  Add a `START_WAGER` event (using the `create-game-action` skill).
 2.  In `processHostEvent`, handle the event to set `next.phase = GamePhase.WAGER`.
 
-## 4. Reset & Cleanup
+## 5. Cross-Platform UI Optimization
 
-### File: `services/gameService.ts`
-
-Ensure any state specific to this phase is reset when the round ends or game restarts.
-
-**Steps:**
-1.  In `INITIAL_STATE` (or `next` state logic for `NEW_ROUND`), clear any data relevant to the new phase (e.g., `wagers: {}`).
-2.  Update `GameState` interface in `types.ts` if you added new state properties.
+When designing the UI for a new phase:
+- **Host View (TV)**: Focus on high-visibility text, animations, and large avatars. Optimize for 1080p and 4K displays.
+- **Player View (Phone)**: Keep inputs accessible and large (min 48px tap targets). Ensure the layout works in Portrait orientation.
+- **Tablets**: Test that the "OnlinePlayerView" (shared view) scales well for tablet users who might rotate their devices.
 
 ## Checklist
 - [ ] Phase added to `GamePhase` enum.
-- [ ] Host view renders component for new phase.
-- [ ] Player view renders controls for new phase.
+- [ ] Host view renders component for new phase (TV optimized).
+- [ ] Player view renders controls for new phase (Phone/Portrait optimized).
 - [ ] Transition logic implemented in `gameService.ts`.
 - [ ] State cleanup handled for new round/game over.
+- [ ] Tested on Android Simulator (Phone & Tablet).

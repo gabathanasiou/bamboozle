@@ -16,8 +16,17 @@ This skill provides guidelines for documenting the Bamboozle codebase. Use these
 - **`/types.ts`**: Centralized TypeScript definitions.
 - **`/i18n`**: Localization files.
 - **`/server`**: Node.js backend for socket.io handling and TTS generation.
+- **`/android`**: Capacitor Android project (Gradle, AndroidManifest, Java).
+- **`/docs`**: Comprehensive documentation for all subsystems.
 
-## 2. Documentation Guidelines
+## 2. Infrastructure & Tooling
+
+### Capacitor (Native App)
+- **`capacitor.config.ts`**: Central configuration for the native app. 
+  - Uses `IS_DEV` flag to switch between Local IP (dev) and Bundled Code (production).
+- **`/android`**: Treat this as a build artifact. Custom logic should be in `MainActivity.java` but most state belongs in React.
+
+## 3. Documentation Guidelines
 
 ### Component Documentation (TSDoc)
 All major components should have a TSDoc comment explaining their purpose, props, and any side effects.

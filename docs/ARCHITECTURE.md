@@ -13,6 +13,21 @@ Bamboozle is a real-time multiplayer party game inspired by Jackbox Games. It in
 - **Audio**: Web Audio API + Google Cloud Text-to-Speech
 - **Animation**: Framer Motion
 - **3D**: React Three Fiber (Avatars)
+- **Native Wrapper**: Capacitor (Android)
+- **Networking**: Socket.IO (Client & Server)
+- **Hosting**: Netlify (Frontend) & Railway (Backend)
+- **Database**: Redis (Session storage)
+
+## Distribution Model
+
+Bamboozle uses a **Hybrid Distribution Model**:
+
+1. **Web (Free)**: Hosted on Netlify. Players can join games via browser without an account.
+2. **Android App**: Powered by Capacitor. 
+   - **Development**: Uses live-reload from the host machine.
+   - **Production**: Bundles the code inside the app for performance and offline capability.
+   - **Fullscreen**: Custom native implementation for immersive gameplay.
+   - **Orientation**: Adaptive logic (Portrait for phones, Auto for tablets).
 
 ### Data Flow
 1. **Host** acts as the game server for logic (in local dev mode) or coordinates with a backend server.

@@ -12,9 +12,11 @@ View your app in AI Studio: https://ai.studio/apps/drive/1PPv_q90q-7H5lO9aANaXaV
 
 - [Technical Overview](docs/TECHNICAL.md): Detailed information about the architecture, audio system, and Safari compatibility.
 - [Architecture](docs/ARCHITECTURE.md): High-level overview of the tech stack and system design.
+- [Android & Capacitor](docs/CAPACITOR_ANDROID.md): Guide for the native Android app, bundling, and deployment.
 - [Game Systems](docs/GAME_SYSTEMS.md): Explanation of the game loop, phases, and logic.
 - [Networking](docs/NETWORKING.md): Guide to Socket.IO events and synchronization.
 - [Best Practices](docs/BEST_PRACTICES.md): Coding standards and guidelines.
+- [Multiplayer Plan](docs/MULTIPLAYER_PLAN.md): The master roadmap for Online Friends Mode and monetisation.
 - [Implementation Plan](plan.md): The original plan for Online Friends Mode.
 
 ## Run Locally
