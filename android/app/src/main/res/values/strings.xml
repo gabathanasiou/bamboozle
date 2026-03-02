@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Bamboozle</string>
+    <string name="title_activity_main">Bamboozle</string>
+    <string name="package_name">com.bamboozle.app</string>
+    <string name="custom_url_scheme">com.bamboozle.app</string>
+</resources>

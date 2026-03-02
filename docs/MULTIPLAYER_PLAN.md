@@ -32,10 +32,10 @@ The majority of the infrastructure already exists. This is not a rebuild, it's a
 | Google Cloud TTS + GCS caching | ✅ Done | `server/ttsService.js` |
 | Railway deployment | ✅ Done | `docs/DEPLOYMENT.md` |
 | QR code / shareable URLs | ⚠️ Partial | Room codes exist; needs URL format + QR generator |
-| Capacitor (Android wrapper) | ❌ Not started | See `docs/CAPACITOR_ANDROID.md` |
+| Capacitor (Android wrapper) | ✅ Done | `capacitor.config.ts`, `android/` |
 | Google Play Billing (RevenueCat) | ❌ Not started | See `docs/BILLING_INTEGRATION.md` |
 | Host entitlement / JWT system | ❌ Not started | See `docs/ENTITLEMENT_SYSTEM.md` |
-| Server-side host gating | ❌ Not started | See `docs/SERVER_HARDENING.md` |
+| Server-side host gating | ✅ Done (Phase 1) | `server/index.js` |
 
 ---
 
@@ -119,12 +119,14 @@ Work through these in order. Each phase is self-contained — you can ship and t
 ### Phase 1: Server Hardening
 **Est: 2-3 hours | Prerequisite: None**
 
+> ✅ **Status: Complete**
+
 The lightest phase — small additions to the existing server.
 
-- [ ] Add concurrent room cap per host (max 2 simultaneous rooms)
-- [ ] Add socket event rate limiter (20 events / 10s per socket)
-- [ ] Add structured logging for room creation/destruction events
-- [ ] Add player name + answer input sanitization (strip HTML, max length)
+- [x] Add concurrent room cap per host (max 2 simultaneous rooms)
+- [x] Add socket event rate limiter (20 events / 10s per socket)
+- [x] Add structured logging for room creation/destruction events
+- [x] Add player name + answer input sanitization (strip HTML, max length)
 
 📄 See: [`SERVER_HARDENING.md`](./SERVER_HARDENING.md)
 
@@ -157,21 +159,21 @@ The lightest phase — small additions to the existing server.
 ### Phase 4: Capacitor Android Setup
 **Est: 4-8 hours (longer if first Android project) | Prerequisite: Android Studio installed**
 
-> ⚠️ This is the first time entering Android territory. Allow extra time for environment setup.
+> ✅ **Status: Complete** - Installed and ready in Android Studio
 
 **Environment Setup (one-time):**
-- [ ] Install Android Studio (download from developer.android.com)
-- [ ] Install Android SDK (done via Android Studio's SDK Manager)
-- [ ] Install Java 17+ (Android Studio bundles this, but verify)
-- [ ] Enable Developer Mode on an Android device for testing (or use emulator)
+- [x] Install Android Studio (download from developer.android.com)
+- [x] Install Android SDK (done via Android Studio's SDK Manager)
+- [x] Install Java 17+ (Android Studio bundles this, but verify)
+- [x] Enable Developer Mode on an Android device for testing (or use emulator)
 
 **Capacitor Setup:**
-- [ ] `npm install @capacitor/core @capacitor/cli`
-- [ ] `npx cap init "Bamboozle" "com.bamboozle.app"`
-- [ ] `npx cap add android`
-- [ ] Configure `capacitor.config.ts`
-- [ ] `npm run build && npx cap sync android`
-- [ ] Open in Android Studio: `npx cap open android`
+- [x] `npm install @capacitor/core @capacitor/cli`
+- [x] `npx cap init "Bamboozle" "com.bamboozle.app"`
+- [x] `npx cap add android`
+- [x] Configure `capacitor.config.ts`
+- [x] `npm run build && npx cap sync android`
+- [x] Open in Android Studio: `npx cap open android`
 - [ ] Test run on emulator or device
 - [ ] Add back button handler
 - [ ] Configure status bar to match dark theme
@@ -237,17 +239,17 @@ The lightest phase — small additions to the existing server.
 
 ## Total Estimated Effort
 
-| Phase | Effort |
-|---|---|
-| Phase 1: Server Hardening | 2-3 hours |
-| Phase 2: Shareable Links + QR | 2-4 hours |
-| Phase 3: Browser Join-Only UI | 2-3 hours |
-| Phase 4: Capacitor Android Setup | 4-8 hours |
-| Phase 5: RevenueCat + Billing | 8-12 hours |
-| Phase 6: Play Store Submission | 3-5 hours |
-| **Total** | **21-35 hours** |
+| Phase | Status | Effort |
+|---|---|---|
+| Phase 1: Server Hardening | ✅ Done | - |
+| Phase 2: Shareable Links + QR | Pending | 2-4 hours |
+| Phase 3: Browser Join-Only UI | Pending | 2-3 hours |
+| Phase 4: Capacitor Android Setup | ✅ Done (needs testing) | - |
+| Phase 5: RevenueCat + Billing | Pending | 8-12 hours |
+| Phase 6: Play Store Submission | Pending | 3-5 hours |
+| **Remaining** | | **15-24 hours** |
 
-> The wide range reflects first-time Android setup uncertainty. Phases 1-3 are all familiar web territory. The jump happens at Phase 4.
+> Phase 1 and 4 are complete. Testing and remaining Phase 4 items (back button, status bar) needed before moving to Phase 5.
 
 ---
 
