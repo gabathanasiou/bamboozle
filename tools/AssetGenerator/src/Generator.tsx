@@ -26,6 +26,7 @@ const DEFAULTS = {
         padding: 60,
         size: 512,
         bgTint: 0,
+        narratorSize: 60,
     },
     loading: {
         avatarSize: 80,
@@ -278,10 +279,10 @@ export const AssetGenerator: React.FC = () => {
 const IconAsset: React.FC<{ settings: any }> = ({ settings }) => {
     return (
         <BaseBackground settings={settings} className="flex-col">
-            <div style={{ width: '60%', height: '60%', filter: 'drop-shadow(0 25px 35px rgba(0,0,0,0.3))' }}>
+            <div style={{ width: `${settings.narratorSize}%`, height: `${settings.narratorSize}%`, filter: 'drop-shadow(0 25px 35px rgba(0,0,0,0.3))' }}>
                 <Avatar
                     seed={NARRATOR_SEED}
-                    size={settings.size * 0.6}
+                    size={settings.size * (settings.narratorSize / 100)}
                     expression={settings.expression}
                     className="w-full h-full"
                 />
@@ -611,6 +612,14 @@ const IconControls: React.FC<{ settings: any, setSettings: (val: any) => void }>
             <AppearanceControls settings={settings} setSettings={setSettings} showGameBg />
 
             <ControlGroup label="Layout">
+                <RangeSlider
+                    label="Narrator Size"
+                    min={30} max={95}
+                    value={settings.narratorSize}
+                    defaultValue={DEFAULTS.icon.narratorSize}
+                    unit="%"
+                    onChange={(val) => setSettings({ ...settings, narratorSize: val })}
+                />
                 <button
                     onClick={() => setSettings({ ...settings, showTitle: !settings.showTitle })}
                     className={`w-full py-4 rounded-2xl flex items-center justify-center space-x-3 transition-all border ${settings.showTitle

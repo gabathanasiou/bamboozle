@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "asset-generator": "vite -c tools/AssetGenerator/vite.config.ts",
+    "android:build": "node scripts/build-native.js",
     "postinstall": "cd server && npm install"
   },
   "dependencies": {

@@ -17,6 +17,8 @@ View your app in AI Studio: https://ai.studio/apps/drive/1PPv_q90q-7H5lO9aANaXaV
 - [Networking](docs/NETWORKING.md): Guide to Socket.IO events and synchronization.
 - [Best Practices](docs/BEST_PRACTICES.md): Coding standards and guidelines.
 - [Multiplayer Plan](docs/MULTIPLAYER_PLAN.md): The master roadmap for Online Friends Mode and monetisation.
+- [Asset Generator Guide](docs/ASSET_GENERATOR.md): How to use the built-in branding tool.
+- [Android Asset Guide](docs/ANDROID_ASSET_GUIDE.md): Practical steps for native graphics integration.
 - [Implementation Plan](plan.md): The original plan for Online Friends Mode.
 
 ## Run Locally
@@ -35,6 +37,8 @@ View your app in AI Studio: https://ai.studio/apps/drive/1PPv_q90q-7H5lO9aANaXaV
 
 The project includes a persistent audio caching system using Google Cloud Storage.
 - **Admin Dashboard**: Access at `/admin` to manage the audio cache.
+- **Asset Generator**: Run `npm run asset-generator` to create high-res icons and splash screens.
+- **Native Smart Build**: Run `npm run android:build` to build the app and intelligently update graphics.
 - **Static Generation**: Pre-generate all narrator voice lines and trivia questions to minimize costs.
 - **Monitoring**: Real-time tracking of cloud storage uploads and API health.
 

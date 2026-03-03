@@ -15,9 +15,11 @@ import { Network } from '@capacitor/network';
 import { Expression } from './types';
 import { GameBackground, RoomManagerModal } from './views/GameSharedComponents';
 import { WifiOff, RefreshCcw } from 'lucide-react';
+import { SplashScreen } from '@capacitor/splash-screen';
 
 const App: React.FC = () => {
   const [isOnline, setIsOnline] = useState(true);
+  const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
     // 1. Initial check
@@ -54,11 +56,43 @@ const App: React.FC = () => {
 
     const backButtonPromise = setupBackButton();
 
+    // 3. Handle readiness and Splash Screen
+    const handleReady = async () => {
+      try {
+        // Wait for high-priority fonts to be loaded
+        if ('fonts' in document) {
+          await document.fonts.ready;
+        }
+        // Give a tiny buffer for layout to settle
+        await new Promise(resolve => setTimeout(resolve, 100));
+      } catch (e) {
+        console.error('Ready check failed', e);
+      } finally {
+        setIsReady(true);
+      }
+    };
+    handleReady();
+
     return () => {
       networkPromise.then(l => l.remove());
       backButtonPromise.then(l => l.remove());
     };
   }, []);
+
+  useEffect(() => {
+    if (isReady) {
+      SplashScreen.hide({
+        fadeOutDuration: 400
+      }).catch(() => {
+        // Ignore errors if running on web
+      });
+    }
+  }, [isReady]);
+
+  // Don't render the main app until fonts/network are checked to prevent flashes
+  if (!isReady) {
+    return null;
+  }
 
   if (!isOnline) {
     return <OfflineView onRetry={async () => {
