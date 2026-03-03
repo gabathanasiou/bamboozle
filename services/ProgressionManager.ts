@@ -64,7 +64,7 @@ export class ProgressionManager {
     public pause() {
         if (this.isPaused) return;
         this.isPaused = true;
-        console.log('[Progression] Pausing...');
+        import.meta.env.DEV && console.log('[Progression] Pausing...');
 
         if (this.timerId) {
             clearTimeout(this.timerId);
@@ -79,7 +79,7 @@ export class ProgressionManager {
     public resume() {
         if (!this.isPaused) return;
         this.isPaused = false;
-        console.log('[Progression] Resuming...');
+        import.meta.env.DEV && console.log('[Progression] Resuming...');
 
         if (this.pendingAdvance) {
             this.pendingAdvance = false;
@@ -87,9 +87,8 @@ export class ProgressionManager {
             return;
         }
 
-        // If we were waiting for a timer (either safety audio or just delay)
         if (this.remainingDuration > 0) {
-            console.log(`[Progression] Resuming wait: ${this.remainingDuration}ms`);
+            import.meta.env.DEV && console.log(`[Progression] Resuming wait: ${this.remainingDuration}ms`);
             this.startTimer(this.remainingDuration, () => {
                 if (this.isWaitingForAudio) {
                     // If this was the safety timer expiring
@@ -255,7 +254,7 @@ export class ProgressionManager {
             return;
         }
 
-        console.log('[Progression] Processing Step:', step.type, step.answerId);
+        import.meta.env.DEV && console.log('[Progression] Processing Step:', step.type, step.answerId);
 
         // Update State Visuals
         this.setState(prev => {
@@ -320,12 +319,12 @@ export class ProgressionManager {
     public onAudioEnded() {
         if (!this.isWaitingForAudio) return;
 
-        console.log('[Progression] Audio ended, next step.');
+        import.meta.env.DEV && console.log('[Progression] Audio ended, next step.');
         this.isWaitingForAudio = false;
         this.clearTimer();
 
         if (this.isPaused) {
-            console.log('[Progression] Audio ended while paused. Will advance on resume.');
+            import.meta.env.DEV && console.log('[Progression] Audio ended while paused. Will advance on resume.');
             this.pendingAdvance = true;
             return;
         }
@@ -340,7 +339,7 @@ export class ProgressionManager {
         // Transition to Leaderboard
         // We need to call a method on gameService or dispatch an action.
         // Since we don't have the full gameService logic here, we'll assume we can trigger a phase change.
-        console.log('[Progression] Reveal Complete');
+        import.meta.env.DEV && console.log('[Progression] Reveal Complete');
 
         // Trigger the provided "onPhaseComplete" or similar.
         // For now, we'll modify state directly to move phases if allowed?

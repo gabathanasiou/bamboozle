@@ -36,14 +36,14 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ state, actions, playerId
 
     // Check for rejoinable session
     useEffect(() => {
-        console.log('[PlayerView] Session check effect. isJoined:', isJoined, 'joinStep:', joinStep, 'actions available:', !!actions);
+        import.meta.env.DEV && console.log('[PlayerView] Session check effect. isJoined:', isJoined, 'joinStep:', joinStep, 'actions available:', !!actions);
         if (isJoined || joinStep !== 'CODE') return;
 
         const storedCode = localStorage.getItem('bamboozle_room_code');
-        console.log('[PlayerView] Stored room code in localStorage:', storedCode);
+        import.meta.env.DEV && console.log('[PlayerView] Stored room code in localStorage:', storedCode);
         if (storedCode && storedCode.length === 4) {
             actions.checkRoomExists(storedCode, (exists: boolean) => {
-                console.log('[PlayerView] Room check result for', storedCode, ':', exists);
+                import.meta.env.DEV && console.log('[PlayerView] Room check result for', storedCode, ':', exists);
                 if (exists) {
                     setRejoinCode(storedCode);
                 } else {

@@ -171,17 +171,17 @@ const HomeSelector = ({ onSelect, isMobile, language, setLanguage }: { onSelect:
   const { actions } = useGameService('PLAYER', { initialLanguage: language }); // Dummy instance for API calls
 
   const handleHostClick = () => {
-    console.log('[Home] Host button clicked. Checking for existing rooms...');
+    import.meta.env.DEV && console.log('[Home] Host button clicked. Checking for existing rooms...');
 
     // Set a safety timeout - if server doesn't respond in 2s, just proceed to Host view
     const safetyTimeout = setTimeout(() => {
-      console.warn('[Home] Room check timed out. Proceeding to Host view.');
+      import.meta.env.DEV && console.warn('[Home] Room check timed out. Proceeding to Host view.');
       onSelect('HOST');
     }, 2000);
 
     actions.getRoomsByHost!((rooms) => {
       clearTimeout(safetyTimeout);
-      console.log('[Home] Received rooms from server:', rooms?.length || 0);
+      import.meta.env.DEV && console.log('[Home] Received rooms from server:', rooms?.length || 0);
       if (rooms && rooms.length > 0) {
         setActiveRooms(rooms);
         setShowRoomManager(true);

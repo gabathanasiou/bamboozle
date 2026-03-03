@@ -372,7 +372,7 @@ export const useGameService = (
         }
       };
 
-      console.log('[TTS] Speaking:', text);
+      import.meta.env.DEV && console.log('[TTS] Speaking:', text);
       window.speechSynthesis.speak(utterance);
     } else {
       onComplete?.();
@@ -390,7 +390,7 @@ export const useGameService = (
     isPlayingPremiumRef.current = true;
 
     if (task.type === 'LOCAL') {
-      console.log('[Audio] Playing LOCAL from queue:', task.text);
+      import.meta.env.DEV && console.log('[Audio] Playing LOCAL from queue:', task.text);
       internalSpeak(task.text, false, undefined, () => {
         playNextPremium();
       });
@@ -398,7 +398,7 @@ export const useGameService = (
     }
 
     // REMOTE Logic
-    console.log('%c[Audio] Playing REMOTE: %c' + task.text, 'color: #10b981; font-weight: bold', 'color: #ec4899; font-style: italic');
+      import.meta.env.DEV && console.log('%c[Audio] Playing REMOTE: %c' + task.text, 'color: #10b981; font-weight: bold', 'color: #ec4899; font-style: italic');
     const audioUrl = task.audioUrl!;
     const fullUrl = audioUrl.startsWith('http') ? audioUrl : `${SOCKET_URL}${audioUrl}`;
 
@@ -479,7 +479,7 @@ export const useGameService = (
     if (audioUnlockedRef.current) return;
     audioUnlockedRef.current = true;
 
-    console.log('[Audio] Unlocking for Safari (one-time)...');
+    import.meta.env.DEV && console.log('[Audio] Unlocking for Safari (one-time)...');
 
     // 1. Resume SFX context
     sfx.unlock();
@@ -495,14 +495,14 @@ export const useGameService = (
     if (audio && audio.paused && !isPlayingPremiumRef.current) {
       audio.play().then(() => {
         audio.pause();
-        console.log('[Audio] Shared element unlocked');
+        import.meta.env.DEV && console.log('[Audio] Shared element unlocked');
       }).catch(e => console.warn('[Audio] Initial unlock failed (safe to ignore):', e));
     }
   }, []);
 
   const getRoomsByHost = useCallback((callback: (rooms: any[]) => void) => {
     const isConnected = socketRef.current?.connected;
-    console.log(`[GameService] getRoomsByHost called. Socket ID: ${socketRef.current?.id}, Connected: ${isConnected}, PlayerID: ${playerId}`);
+    import.meta.env.DEV && console.log(`[GameService] getRoomsByHost called. Socket ID: ${socketRef.current?.id}, Connected: ${isConnected}, PlayerID: ${playerId}`);
 
     if (!socketRef.current) {
       console.warn('[GameService] Cannot getRoomsByHost: socketRef.current is null');
@@ -511,7 +511,7 @@ export const useGameService = (
     }
 
     socketRef.current.emit('getRoomsByHost', { hostId: playerId }, (rooms: any[]) => {
-      console.log('[GameService] getRoomsByHost response:', rooms);
+      import.meta.env.DEV && console.log('[GameService] getRoomsByHost response:', rooms);
       callback(rooms);
     });
   }, [playerId]);
@@ -536,7 +536,7 @@ export const useGameService = (
         speechDedupRef.current[key] = now;
 
         const requestId = generateId();
-        console.log('%c[TTS] %cRequesting: %c' + text, 'color: #3b82f6; font-weight: bold', 'color: #60a5fa', 'color: #fff; font-style: italic');
+        import.meta.env.DEV && console.log('%c[TTS] %cRequesting: %c' + text, 'color: #3b82f6; font-weight: bold', 'color: #60a5fa', 'color: #fff; font-style: italic');
 
         // Start a per-request fallback timer.
         const fallbackTimer = setTimeout(() => {
@@ -587,7 +587,7 @@ export const useGameService = (
   }, [playNextPremium, internalSpeak]);
 
   useEffect(() => {
-    console.log('[GameService] Initializing socket to:', SOCKET_URL);
+    import.meta.env.DEV && console.log('[GameService] Initializing socket to:', SOCKET_URL);
     const socket = io(SOCKET_URL, {
       transports: ['websocket', 'polling'], // Allow fallback to polling
       timeout: 10000,
@@ -595,7 +595,7 @@ export const useGameService = (
     });
 
     socket.on('connect', () => {
-      console.log('[GameService] Socket connected successfully!');
+      import.meta.env.DEV && console.log('[GameService] Socket connected successfully!');
     });
 
     socket.on('connect_error', (err) => {
@@ -614,7 +614,7 @@ export const useGameService = (
 
       if (targetRoomCode) {
         // Rejoin existing room
-        console.log('[GameService] Rejoining existing room as host:', targetRoomCode);
+        import.meta.env.DEV && console.log('[GameService] Rejoining existing room as host:', targetRoomCode);
         socket.emit('joinRoom', { roomCode: targetRoomCode, role: 'HOST', id: playerId }, (response: any) => {
           if (response.success) {
             // Re-apply host-local settings (usePremiumVoices) onto the server-recovered
@@ -639,13 +639,13 @@ export const useGameService = (
         });
       } else {
         // Create a new room
-        console.log('[GameService] Emitting createRoom for host:', playerId);
+        import.meta.env.DEV && console.log('[GameService] Emitting createRoom for host:', playerId);
         socket.emit('createRoom', { hostId: playerId }, (roomCode: string) => {
           if (!roomCode) {
             console.error('[GameService] Server failed to return a roomCode!');
             return;
           }
-          console.log('[GameService] Room created successfully:', roomCode);
+          import.meta.env.DEV && console.log('[GameService] Room created successfully:', roomCode);
           localStorage.setItem('bamboozle_room_code', roomCode); // Save for rejoin
           setState(prev => {
             const next = { ...prev, roomCode };
@@ -692,7 +692,7 @@ export const useGameService = (
 
     // Host disconnected - show overlay while waiting for reconnection
     socket.on('hostDisconnected', () => {
-      console.log('Host disconnected. Waiting for reconnection...');
+      import.meta.env.DEV && console.log('Host disconnected. Waiting for reconnection...');
       if (!isHostRef.current) {
         setHostDisconnected(true);
       }
@@ -700,13 +700,13 @@ export const useGameService = (
 
     // Host reconnected - hide overlay
     socket.on('hostReconnected', () => {
-      console.log('Host reconnected!');
+      import.meta.env.DEV && console.log('Host reconnected!');
       setHostDisconnected(false);
     });
 
     // Player was kicked after 60s disconnect timeout
     socket.on('playerKicked', ({ playerId }: { playerId: string }) => {
-      console.log(`Player ${playerId} was kicked due to disconnect timeout`);
+      import.meta.env.DEV && console.log(`Player ${playerId} was kicked due to disconnect timeout`);
       // If we're the host, remove the player from state
       if (isHostRef.current) {
         processHostEvent({ type: 'REMOVE_PLAYER', payload: { playerId } });
@@ -717,7 +717,7 @@ export const useGameService = (
 
     // LISTEN FOR SERVER AUDIO BROADCASTS
     socket.on('playAudio', ({ text, audioUrl, requestId, isHit }: { text: string, audioUrl: string, requestId: string, isHit: boolean }) => {
-      console.log(`%c[Audio] Received broadcast %c${isHit ? '(CACHE HIT)' : '(NEW)'}: %c${text}`, 'color: #8b5cf6; font-weight: bold', isHit ? 'color: #10b981; font-weight: bold' : 'color: #f59e0b; font-weight: bold', 'color: #fff');
+      import.meta.env.DEV && console.log(`%c[Audio] Received broadcast %c${isHit ? '(CACHE HIT)' : '(NEW)'}: %c${text}`, 'color: #8b5cf6; font-weight: bold', isHit ? 'color: #10b981; font-weight: bold' : 'color: #f59e0b; font-weight: bold', 'color: #fff');
 
       // Prevent double-speaking if Host also gets this event
       if (requestId) {
@@ -730,7 +730,7 @@ export const useGameService = (
 
         // If already processed (by fallback timer), discard
         if (processedRequestsRef.current.has(requestId)) {
-          console.log('[Audio] Already processed (fallback), ignoring remote.');
+          import.meta.env.DEV && console.log('[Audio] Already processed (fallback), ignoring remote.');
           return;
         }
         processedRequestsRef.current.add(requestId);
@@ -1226,7 +1226,7 @@ export const useGameService = (
           next.isPaused = isPausing;
 
           if (isPausing) {
-            console.log('[GameService] PAUSING GAME');
+            import.meta.env.DEV && console.log('[GameService] PAUSING GAME');
             // Clear all timers
             if (timerRef.current) {
               clearInterval(timerRef.current);
@@ -1238,7 +1238,7 @@ export const useGameService = (
               progressionManager.current.pause();
             }
           } else {
-            console.log('[GameService] UNPAUSING GAME');
+            import.meta.env.DEV && console.log('[GameService] UNPAUSING GAME');
 
             // Resume Progression Manager (Reveal Phase)
             if (progressionManager.current) {
@@ -1753,7 +1753,7 @@ export const useGameService = (
   const resumeGameProgression = (state: GameState) => {
     if (!isHostRef.current) return;
 
-    console.log('[Host Reclaim] Resuming game progression for phase:', state.phase, 'Time left:', state.timeLeft);
+    import.meta.env.DEV && console.log('[Host Reclaim] Resuming game progression for phase:', state.phase, 'Time left:', state.timeLeft);
 
     // If it's a phase with a countdown, restart the timer
     if (state.phase === GamePhase.WRITING) {
@@ -1833,7 +1833,7 @@ export const useGameService = (
 
   const dispatch = (event: GameEvent) => {
     // Debug log
-    console.log('[Dispatch]', isHostRef.current ? 'HOST' : role, event.type, stateRef.current.roomCode);
+    import.meta.env.DEV && console.log('[Dispatch]', isHostRef.current ? 'HOST' : role, event.type, stateRef.current.roomCode);
 
     if (isHostRef.current) {
       processHostEvent(event);
@@ -1852,7 +1852,7 @@ export const useGameService = (
 
         // If we reclaimed host status, set up host listeners and broadcast function
         if (response.becameHost) {
-          console.log('Reclaimed host status! Setting up host listeners.');
+          import.meta.env.DEV && console.log('Reclaimed host status! Setting up host listeners.');
 
           // Mark this client as now being the host
           isHostRef.current = true;
@@ -1880,7 +1880,7 @@ export const useGameService = (
 
         if (callback) callback(true, undefined, response.becameHost);
         // Save code on successful join
-        console.log('[GameService] Joined room:', roomCode, '. Saving to localStorage.');
+        import.meta.env.DEV && console.log('[GameService] Joined room:', roomCode, '. Saving to localStorage.');
         localStorage.setItem('bamboozle_room_code', roomCode);
       } else {
         if (callback) callback(false, response.error);
@@ -1925,7 +1925,7 @@ export const useGameService = (
   const requestSync = (callback?: (success: boolean) => void) => {
     const now = Date.now();
     if (now - lastSyncRef.current < 30000) {
-      console.log('Sync cooldown active');
+      import.meta.env.DEV && console.log('Sync cooldown active');
       if (callback) callback(false);
       return;
     }
