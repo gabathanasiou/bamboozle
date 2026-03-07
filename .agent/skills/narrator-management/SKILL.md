@@ -1,6 +1,14 @@
 ---
 name: narrator-management
-description: Comprehensive guide and utilities for managing the Bamboozle narrator system, including premium voices and Safari compatibility.
+description: "This skill should be used when managing the Bamboozle narrator system, including premium voices and Safari compatibility."
+version: 1.0.0
+author: Gabriel Athanasiou
+created: 2024-05-01
+updated: 2026-03-07
+platforms: [copilot, claude, codex]
+category: development
+tags: [audio, narrator, tts]
+risk: safe
 ---
 
 # Narrator & Audio Management
@@ -16,7 +24,7 @@ The audio system (`services/audioService.ts` & `gameService.ts`) handles two typ
     -   **Local**: Browser `speechSynthesis` fallback.
 
 ### Critical: Safari Compatibility
-To play audio on iOS Safari without a user gesture for *every* line, we use a **Shared Audio Element** strategy:
+To play audio on iOS Safari without a user gesture for *every* line, use a **Shared Audio Element** strategy:
 -   A single `<audio>` element (`narratorAudioRef` in `gameService.ts`) is created.
 -   It is "unlocked" (played silently) on the first user interaction (Join/Start).
 -   All subsequent TTS tracks are played by swapping the `src` of this *exact same element*.
@@ -73,7 +81,7 @@ speak(line);
 
 ### Android/Capacitor Audio
 The Android app runs in a WebView. While it behaves similarly to Chrome, there are native considerations:
-- **Local Dev Server**: In development, audio from `http://localhost:3001` will fail on Android. You **must** use the Mac's local IP (e.g., `http://192.168.x.x:3001`).
+- **Local Dev Server**: In development, audio from `http://localhost:3001` will fail on Android. You **must** use the local IP (e.g., `http://192.168.x.x:3001`).
 - **Media Playback**: Capacitor requires `android:usesCleartextTraffic="true"` to load audio from non-HTTPS sources during development.
 - **Hardware Volume**: The system volume buttons on Android will control the "Media" volume for the game.
 
@@ -81,12 +89,12 @@ The Android app runs in a WebView. While it behaves similarly to Chrome, there a
 
 ### Common Issues
 -   **"Narrator is silent on iPhone"**: Check if `unlockAudio()` was called. Verify `narratorAudioRef.current` is being used.
--   **"Game hangs at Reveal"**: The `ProgressionManager` waits for `onAudioEnded`. If the audio errors out and doesn't fire `ended`, the game hangs.
+-   **"Game hangs at Reveal"**: The `ProgressionManager` waits for `onAudioEnded`. If the audio errors out and does not fire `ended`, the game hangs.
     -   *Fix*: Ensure the "Safety Timeout" in `playNextPremium` (gameService.ts) is active (currently set to ~8s).
 
 ### Updating the Server (Premium Voices)
 -   Server logic is in `server/index.js` (or `server/tts.ts`).
--   If you add a new language, you must map it to a Google Cloud Voice ID in the server config.
+-   When adding a new language, map it to a Google Cloud Voice ID in the server config.
 
 ## Checklist
 -   [ ] New lines added to `i18n/narrator`.

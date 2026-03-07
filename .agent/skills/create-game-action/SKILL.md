@@ -1,17 +1,25 @@
 ---
 name: create-game-action
-description: A step-by-step guide for adding a new game action (event) to the Bamboozle codebase.
+description: "This skill should be used when adding a new game action or event to the Bamboozle codebase."
+version: 1.0.0
+author: Gabriel Athanasiou
+created: 2024-05-01
+updated: 2026-03-07
+platforms: [copilot, claude, codex]
+category: development
+tags: [game-logic, events, bamboozle]
+risk: safe
 ---
 
 # Creating a New Game Action
 
-This skill guides you through adding a new action/event to the Bamboozle game loop. Since the game is event-driven via Socket.IO, adding a new feature usually requires updates across the shared types, the game logic service, and the UI components.
+This skill guides developers through adding a new action/event to the Bamboozle game loop. Since the game is event-driven via Socket.IO, adding a new feature usually requires updates across the shared types, the game logic service, and the UI components.
 
 ## 1. Define the Action Type
 
 ### File: `types.ts`
 
-To ensure end-to-end type safety, you must first define the new action in the `GameEvent` union type.
+To ensure end-to-end type safety, first define the new action in the `GameEvent` union type.
 
 **Steps:**
 1.  Open `src/types.ts`.
@@ -62,12 +70,12 @@ case 'USE_POWERUP': {
 
 ### File: `views/PlayerView.tsx` (or HostView/OnlinePlayerView)
 
-You need to dispatch the action from a component.
+Dispatch the action from a component in the user interface.
 
 **Steps:**
 1.  In the component, access the `actions` prop or the `processHostEvent` function (if available).
 2.  Usually, actions are passed down or triggered via `socket.emit`.
-3.  For player actions, you typically emit a socket event that the host listens for.
+3.  For player actions, typically emit a socket event that the host listens for.
 
 **Example (Player side):**
 ```typescript
@@ -83,11 +91,11 @@ const handlePowerup = () => {
 
 **Note:** Ensure `gameService.ts` on the Host side is listening for this event. Most player events are automatically routed to `processHostEvent` via the `playerEvent` listener.
 
-## 5. Native Considerations (Android/Capacitor)
+## 4. Native Considerations (Android/Capacitor)
 
 When adding a new action that affects the UI, remember:
 - **Haptic Feedback**: For high-impact actions (scoring, winning), consider adding haptic feedback using `@capacitor/haptics`.
-- **Back Button**: If your action opens a modal or a sub-view, ensure it integrates with the back button handler in `App.tsx`.
+- **Back Button**: If the action opens a modal or a sub-view, ensure it integrates with the back button handler in `App.tsx`.
 - **Safe Areas**: Ensure any new UI elements (like a "Powerup" tray) respect `env(safe-area-inset-bottom)`.
 
 ## Checklist

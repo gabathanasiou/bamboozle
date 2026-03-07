@@ -1,6 +1,14 @@
 ---
 name: documentation-standards
-description: A comprehensive guide on maintaining documentation, coding standards, and best practices for the Bamboozle codebase.
+description: "This skill should be used when writing or updating documentation, coding standards, and best practices for the Bamboozle codebase."
+version: 1.0.0
+author: Gabriel Athanasiou
+created: 2024-05-01
+updated: 2026-03-07
+platforms: [copilot, claude, codex]
+category: documentation
+tags: [standards, documentation, best-practices]
+risk: safe
 ---
 
 # Documentation Standards & Best Practices
@@ -51,7 +59,7 @@ Services managing state or side effects must document:
 ### READMEs
 Each major subsystem (Audio, Network, Game Logic) should have a dedicated markdown file in `/docs`.
 
-## 3. Best Practices
+## 4. Best Practices
 
 ### State Management
 - Use `useGameService` for global game state.
@@ -76,7 +84,7 @@ Each major subsystem (Audio, Network, Game Logic) should have a dedicated markdo
 - Listen for `gameStateUpdate` to sync changes.
 - Handle reconnection logic in `useGameService` (persist `playerId` and `roomCode`).
 
-## 4. Workflows
+## 5. Workflows
 
 ### Adding a New Game Phase
 1. Update `types.ts`: Add new `GamePhase` enum value.

@@ -1,6 +1,14 @@
 ---
 name: manage-game-phases
-description: Guide for adding or modifying a game phase (e.g., adding a "Wager" phase) in Bamboozle.
+description: "This skill should be used when adding or modifying a game phase (e.g., adding a 'Wager' phase) in Bamboozle."
+version: 1.0.0
+author: Gabriel Athanasiou
+created: 2024-05-01
+updated: 2026-03-07
+platforms: [copilot, claude, codex]
+category: development
+tags: [game-phases, bamboozle, front-end]
+risk: safe
 ---
 
 # Managing Game Phases
@@ -11,7 +19,7 @@ Changing or adding a game phase is a major modification to the game loop. This s
 
 ### File: `types.ts`
 
-First, update the `GamePhase` enum to include your new phase.
+First, update the `GamePhase` enum to include the new phase.
 
 **Steps:**
 1.  Open `src/types.ts`.
@@ -32,7 +40,7 @@ export enum GamePhase {
 
 ### Files: `views/HostView.tsx`, `views/PlayerView.tsx`, `views/OnlinePlayerView.tsx`
 
-Each view needs to know how to render the new phase.
+Each view requires knowledge of how to render the new phase.
 
 **HostView (`views/HostView.tsx`):**
 1.  Import the new `GamePhase` value.
@@ -60,11 +68,11 @@ Each view needs to know how to render the new phase.
 
 ### File: `services/gameService.ts`
 
-You need logic to enter and exit this phase. This usually happens in `processHostEvent` or via `ProgressionManager`.
+Logic is required to enter and exit this phase. This usually happens in `processHostEvent` or via `ProgressionManager`.
 
 **Scenario A: Timer-Based Transition (e.g., Wager -> Reveal)**
 1.  In `processHostEvent`, locate the timer logic or creating a new timer effect.
-2.  When `state.timeLeft <= 0` in your phase, trigger the next phase:
+2.  When `state.timeLeft <= 0` in the current phase, trigger the next phase:
     ```typescript
     if (state.phase === GamePhase.WAGER && state.timeLeft <= 0) {
       next.phase = GamePhase.REVEAL; // Transition
@@ -81,7 +89,7 @@ You need logic to enter and exit this phase. This usually happens in `processHos
 When designing the UI for a new phase:
 - **Host View (TV)**: Focus on high-visibility text, animations, and large avatars. Optimize for 1080p and 4K displays.
 - **Player View (Phone)**: Keep inputs accessible and large (min 48px tap targets). Ensure the layout works in Portrait orientation.
-- **Tablets**: Test that the "OnlinePlayerView" (shared view) scales well for tablet users who might rotate their devices.
+- **Tablets**: Test that the "OnlinePlayerView" (shared view) scales well for tablet users rotating their devices.
 
 ## Checklist
 - [ ] Phase added to `GamePhase` enum.

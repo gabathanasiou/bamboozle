@@ -1,6 +1,14 @@
 ---
 name: android-management
-description: A guide for managing, building, and troubleshooting the Capacitor-based Android application for Bamboozle.
+description: "This skill should be used when managing, building, and troubleshooting the Capacitor-based Android application for Bamboozle."
+version: 1.0.0
+author: Gabriel Athanasiou
+created: 2024-05-01
+updated: 2026-03-07
+platforms: [copilot, claude, codex]
+category: development
+tags: [android, capacitor, build]
+risk: safe
 ---
 
 # Android & Capacitor Management Guide
@@ -13,7 +21,7 @@ The Android app is a hybrid Capacitor application. The source of truth is the Re
 
 ### Local Development (Live Reload)
 1. **Config**: In `capacitor.config.ts`, set `const IS_DEV = true`.
-2. **Server**: Run `npm run dev -- --host` on your Mac.
+2. **Server**: Run `npm run dev -- --host` on the development machine.
 3. **Sync**: Run `npx cap sync android`.
 4. **Run**: Use Android Studio to launch on an emulator or physical device.
 
@@ -46,12 +54,12 @@ Custom native logic is implemented here:
 ## 3. Troubleshooting
 
 ### Connection Issues
-- **Local Dev**: Ensure the IP in `capacitor.config.ts` matches your Mac's current local IP (use `ifconfig`).
-- **Network Resolution**: If the app loads but can't find the server, check `gameService.ts` logs for the `SOCKET_URL`.
+- **Local Dev**: Ensure the IP in `capacitor.config.ts` matches the development machine's current local IP (use `ifconfig`).
+- **Network Resolution**: If the app loads but cannot find the server, check `gameService.ts` logs for the `SOCKET_URL`.
 - **Offline Error**: If the user has no internet, the app will show a custom "Bamboozled! Connection Lost" screen (defined in `App.tsx`).
 
 ### Out of Sync
-If native changes (icons, permissions) aren't reflecting:
+If native changes (icons, permissions) are not reflecting:
 1. Run `npx cap sync android`.
 2. In Android Studio, go to **File > Sync Project with Gradle Files**.
 

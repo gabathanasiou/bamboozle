@@ -1,6 +1,14 @@
 ---
 name: asset-management
-description: A guide for generating, managing, and exporting branding assets for Bamboozle.
+description: "This skill should be used when generating, managing, and exporting branding assets for Bamboozle."
+version: 1.0.0
+author: Gabriel Athanasiou
+created: 2024-05-01
+updated: 2026-03-07
+platforms: [copilot, claude, codex]
+category: assets
+tags: [design, assets, branding]
+risk: safe
 ---
 
 # Asset Management Skill
@@ -28,7 +36,7 @@ This skill provides instructions for using the `AssetGenerator` tool to create b
 - **Navigation (Sidebar)**: Switch between Icon, Loading Screen, and Store Banner modes.
 - **Preview (Center)**: A high-fidelity rendering of the asset. 
 - **Inspector (Right)**: Adjust settings specific to each asset type (Expressions, Grids, Colors).
-- **Export**: Downoad high-res PNGs to your local machine.
+- **Export**: Download high-res PNGs to the local machine.
 
 ## Technical Details
 
@@ -38,10 +46,10 @@ This skill provides instructions for using the `AssetGenerator` tool to create b
 
 ## Best Practices
 
-- **Android Icons**: Set `borderRadius` to roughly 10-20% for a classic squicle look, or keep it square for adaptive icon generation.
+- **Android Icons**: Set `borderRadius` to roughly 10-20% for a classic squircle look, or keep it square for adaptive icon generation.
 - **Loading Screen Stagger**: Ensure the vertical stagger is clearly visible (it staggers by +0.5 avatar height).
 - **Banner Layout**: Rotate or shuffle background avatars if the layout feels too sparse or repetitive.
 
 ## Android Integration Guide
 
-For practical steps on applying your generated assets to the Android application, see the [Android Asset Integration Guide](file:///Users/gabrielathanasiou/Documents/Software Apps/bamboozle/docs/ANDROID_ASSET_GUIDE.md).
+For practical steps on applying generated assets to the Android application, see the [Android Asset Integration Guide](file:///Users/gabrielathanasiou/Documents/Software Apps/bamboozle/docs/ANDROID_ASSET_GUIDE.md).
