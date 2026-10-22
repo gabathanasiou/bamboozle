@@ -1913,6 +1913,510 @@ export const QUESTIONS_EN = [
         answer: "a haunted house",
         category: "Crime",
         lies: ["a judgmental mime", "smelling like Shrek", "a sarcastic robot", "scary bathroom decor", "a malfunctioning shark"]
+    },
+    {
+        fact: "Sir John Herschel observed a sunspot in 1837 whose black centre would have allowed <BLANK> to drop through with a thousand miles of clearance on all sides.",
+        answer: "the Earth",
+        category: "History",
+        lies: ["a double-decker bus", "a grand piano", "a steam locomotive", "Texas", "a woolly mammoth"]
+    },
+    {
+        fact: "The Bank of England used a <BLANK> capable of defacing 200 light coins in one minute.",
+        answer: "sovereign-cutting machine",
+        category: "Bizarre Records",
+        lies: ["coin-squashing mangle", "penny-flattening press", "royal coin guillotine", "coin-clipping ferret", "guinea-gobbling vice"]
+    },
+    {
+        fact: "Benjamin Franklin demonstrated that lightning is electricity using brown paper, twine, and <BLANK>.",
+        answer: "an iron key",
+        category: "History",
+        lies: ["a wet leather strap", "a pewter tankard", "a brass bed warmer", "a pickled eel", "a glass jar of flies"]
+    },
+    {
+        fact: "As a child, Carnôt interrupted a <BLANK> to complain that the general had disposed his men and guns poorly.",
+        answer: "theatrical siege",
+        category: "People",
+        lies: ["toy soldier parade", "puppet artillery drill", "Nutcracker battle", "toy cannon inspection", "paper soldier review"]
+    },
+    {
+        fact: "Pascal carried a <BLANK> to the top of the Puy de Dome, where it gradually inflated as he ascended.",
+        answer: "balloon half filled with air",
+        category: "History",
+        lies: ["a bag of crisps", "a whoopee cushion", "a sealed crisp packet", "a bread dough ball", "a deflated ego"]
+    },
+    {
+        fact: "Hooded crows sometimes gather to hold a <BLANK>.",
+        answer: "Craws' Court",
+        category: "Bizarre Records",
+        lies: ["a screech-off", "a sock funeral", "a shiny swap meet", "a dusk choir practice", "a tail-feather vote"]
+    },
+    {
+        fact: "During assemblies, <BLANK> may fall upon one or two individuals and persecute and beat them until they kill them.",
+        answer: "crows",
+        category: "Bizarre Records",
+        lies: ["furious swans", "mad chickens", "angry geese", "killer rabbits", "trained wasps"]
+    },
+    {
+        fact: "Four ounces of <BLANK> placed in a prepared aperture blew a massive wall to pieces when fired.",
+        answer: "prepared cotton",
+        category: "Bizarre Records",
+        lies: ["bottled thunder", "cannon-grade meringue", "gas-station espresso", "haunted baking soda", "dryer lint"]
+    },
+    {
+        fact: "At a Westminster election, Cuvier saw a mob pelt orators with <BLANK> and other items.",
+        answer: "mud, cabbages, eggs",
+        category: "Bizarre Records",
+        lies: ["rotten herrings", "chamber pots", "dead cats", "links of sausage", "soiled wigs"]
+    },
+    {
+        fact: "Dr. Bowditch said Laplace's phrase 'Thus it plainly appears' meant <BLANK> to show how it plainly appeared.",
+        answer: "hours of hard study",
+        category: "Irony",
+        lies: ["a shrug and a wink", "a wave of the hand", "a puff of chalk dust", "a rabbit from a hat", "a knowing nod"]
+    },
+    {
+        fact: "A single drop of <BLANK> under a microscope can be seen to hold 500 million living beings.",
+        answer: "water",
+        category: "Science",
+        lies: ["sourdough starter", "swamp mud", "pickle juice", "bubble tea", "kombucha brew"]
+    },
+    {
+        fact: "Despite being one of the most successful engineers of his age, Brindley was scarcely able to <BLANK>.",
+        answer: "read or write",
+        category: "People",
+        lies: ["tie his own shoelaces", "boil an egg", "count past seven", "whistle", "fold a letter"]
+    },
+    {
+        fact: "A <BLANK> in a patent let rivals pirate the invention and bankrupted the patentees.",
+        answer: "one-letter typo",
+        category: "Tech Oops",
+        lies: ["misplaced comma", "rogue semicolon", "coffee-ring stain", "doodle of a duck", "reversed diagram"]
+    },
+    {
+        fact: "At Colinton mills, machinery produced <BLANK> weighing 533 lbs., over a mile and a half long, and just 50 inches wide.",
+        answer: "a single sheet of paper",
+        category: "Bizarre Records",
+        lies: ["a giant wool scarf", "one continuous sausage", "a colossal licorice rope", "a world-record eel", "a single giant pancake"]
+    },
+    {
+        fact: "The coconut crab extracts coconut meat using its <BLANK>.",
+        answer: "posterior and narrow pincers",
+        category: "Science",
+        lies: ["miniature crowbar", "nutcracker jaw", "spoon-shaped legs", "razor-sharp butt", "pocket chainsaw"]
+    },
+    {
+        fact: "Descartes built a <BLANK> in Holland that wicked wits claimed was his illegitimate daughter, Franchine.",
+        answer: "female automaton",
+        category: "History",
+        lies: ["clockwork duckling", "brass talking head", "wind-up milkmaid", "pneumatic cherub", "copper nursemaid"]
+    },
+    {
+        fact: "A superstitious Dutch captain mistook Descartes' automaton for a little devil and <BLANK>.",
+        answer: "threw it into the sea",
+        category: "Bizarre Records",
+        lies: ["beat it with a crucifix", "baptized it in rum", "fed it to the goat", "made it swab the deck", "charged it for passage"]
+    },
+    {
+        fact: "Joseph Mills drew the orbit of Halley's comet on <BLANK> and produced a diagram more accurate than any previously published.",
+        answer: "his house floor",
+        category: "Bizarre Records",
+        lies: ["a pub beer mat", "his bedroom ceiling", "a shed door", "a pie tin", "a cigar box lid"]
+    },
+    {
+        fact: "In January in Tebreez, water froze almost instantaneously in tumblers on the dining table, and ink often froze in the ink-stand even though the table was close to the <BLANK>.",
+        answer: "fire",
+        category: "Bizarre Records",
+        lies: ["samovar", "Turkish bath", "blacksmith's forge", "mayor's temper", "south-facing window"]
+    },
+    {
+        fact: "In Tebreez, for at least a fortnight no <BLANK> could be had because they were all split by the cold.",
+        answer: "eggs",
+        category: "Bizarre Records",
+        lies: ["clay pipes", "fiddle bows", "barrel staves", "wooden clogs", "cabbages"]
+    },
+    {
+        fact: "Sir Robert Peel joked that Mr. Babbage's calculating machine should be put to calculate the time at which it would <BLANK>.",
+        answer: "be of any use",
+        category: "Irony",
+        lies: ["be sold for scrap", "start a riot", "beat him at chess", "be mistaken for a loom", "remember its own name"]
+    },
+    {
+        fact: "In some earthquake-prone places, earthquake extent was measured with <BLANK>.",
+        answer: "bowls of treacle",
+        category: "Bizarre Records",
+        lies: ["a pendulum of sausages", "trembling jelly towers", "a choir of tuning forks", "jars of rattling beans", "a quivering plate of jam"]
+    },
+    {
+        fact: "Ctesias claimed that two iron swords given by King Artaxerxes Mnemon and Parysatis averted clouds, hail, and lightning when <BLANK>.",
+        answer: "planted in the earth",
+        category: "History",
+        lies: ["waved at a storm", "clashed above a banquet", "hung over palace gate", "worn as earrings", "dipped in the Tigris"]
+    },
+    {
+        fact: "In Etruscan rites, a <BLANK> was considered a preservative from danger in thunderstorms.",
+        answer: "skinned ass' head",
+        category: "Bizarre Records",
+        lies: ["bronze phallus", "salt-stuffed owl", "wax lightning bolt", "lead thunder nail", "roasted dormouse"]
+    },
+    {
+        fact: "A nearly totally deaf merchant named Jorissen was surprised to hear all the notes of a harpsichord distinctly when a <BLANK> in his mouth accidentally rested against the instrument.",
+        answer: "tobacco-pipe",
+        category: "People",
+        lies: ["silver teaspoon", "brass tuning fork", "cork bottle stopper", "pewter thimble", "horse chestnut"]
+    },
+    {
+        fact: "Jorissen learned to understand the faintest whisper by holding a piece of hard wood between his teeth and <BLANK>.",
+        answer: "another person's teeth",
+        category: "People",
+        lies: ["a brass doorknob", "his own dentures", "a tuning fork", "a dog's squeaky toy", "a horse's bit"]
+    },
+    {
+        fact: "The Indians captured electric eels by driving <BLANK> into the ponds.",
+        answer: "horses and mules",
+        category: "History",
+        lies: ["a herd of squealing pigs", "flocks of angry geese", "tame otters with ropes", "mud-caked water buffalo", "sacks of live frogs"]
+    },
+    {
+        fact: "In Humboldt's account of catching electric eels, <BLANK> were killed in less than five minutes.",
+        answer: "two horses",
+        category: "Bizarre Records",
+        lies: ["five startled goats", "seven angry geese", "a dozen soggy frogs", "three damp ferrets", "six soggy rabbits"]
+    },
+    {
+        fact: "The Indians could harpoon <BLANK> without receiving a shock so long as the cord was dry.",
+        answer: "electric eels",
+        category: "Science",
+        lies: ["a live phone wire", "a buzzing fence", "a charged capacitor", "a Tesla coil's spark", "a humming power line"]
+    },
+    {
+        fact: "Sydney Smith wrote that in Australia Nature makes <BLANK>.",
+        answer: "cherries with the stone outside",
+        category: "General",
+        lies: ["trees grow upside down", "rivers run uphill", "rocks hatch small eggs", "snakes tie neat knots", "wombats do calculus"]
+    },
+    {
+        fact: "Sydney Smith claimed that an Australian bird was so monstrous that a side-bone of it would dine <BLANK>.",
+        answer: "three real carnivorous Englishmen",
+        category: "Bizarre Records",
+        lies: ["a hungry garrison", "a parish workhouse", "the House of Lords", "a naval brigade", "a squadron of hussars"]
+    },
+    {
+        fact: "Joseph Laborde raised 20,000 pounds by selling <BLANK> that he had presented to the church and was allowed by the archbishop to take back.",
+        answer: "a sun of solid gold",
+        category: "Bizarre Records",
+        lies: ["a gilded ostrich egg", "a jeweled reliquary", "a silver Noah's Ark", "a gem-studded codpiece", "a bejeweled mousetrap"]
+    },
+    {
+        fact: "Chigoes bury themselves in <BLANK> and hatch a large colony of young chigoes in a few hours.",
+        answer: "human flesh",
+        category: "Bizarre Records",
+        lies: ["warm laundry piles", "sweaty sock lint", "fresh cow manure", "unwashed wool sweaters", "cheap hotel carpet"]
+    },
+    {
+        fact: "As part of his description of tropical annoyances, Sydney Smith pictured an insect with eleven legs <BLANK>.",
+        answer: "swimming in a tea-cup",
+        category: "Bizarre Records",
+        lies: ["wearing tiny spats", "in a bowler hat", "riding a thimble", "knitting a sock", "queueing for gin"]
+    },
+    {
+        fact: "A tree called ulquahuill yielded a white adhesive milk that natives coagulated into <BLANK>.",
+        answer: "high-bouncing balls called ulli",
+        category: "History",
+        lies: ["sacred chewing gum", "chewy idol figurines", "rubber war masks", "sticky false moustaches", "toy eyeballs"]
+    },
+    {
+        fact: "Among the balloon's equipment was a <BLANK> powered by slaked lime.",
+        answer: "coffee-warmer",
+        category: "Bizarre Records",
+        lies: ["soup kettle", "signal lantern", "sausage grill", "pocket bidet", "cheese toaster"]
+    },
+    {
+        fact: "Louis XV wore a bunch of <BLANK> among his courtiers, and the consumption of the potato root became universal in France.",
+        answer: "potato blossoms",
+        category: "History",
+        lies: ["gilded turnip medals", "silk leek corsages", "beetroot epaulettes", "radish buttonholes", "mashed-potato cravats"]
+    },
+    {
+        fact: "Lisbon preacher Vieyra claimed the first man to round the Cape of Good Hope before the Portuguese was <BLANK>.",
+        answer: "Jonah, in a whale's belly",
+        category: "Bizarre Records",
+        lies: ["Noah's seasick navigator", "a drifting Viking intern", "Pharaoh's runaway oarsman", "a sunburnt Carthaginian", "Odysseus"]
+    },
+    {
+        fact: "About 1750, James Ferguson's <BLANK> interrupted his London astronomy lecture and maliciously overturned several pieces of apparatus.",
+        answer: "wife",
+        category: "People",
+        lies: ["pet baboon", "clockwork duck", "assistant's goat", "landlady's cat", "testy landlord"]
+    },
+    {
+        fact: "When his wife disrupted his lecture, James Ferguson told the audience, \"Ladies and gentlemen, I have the misfortune to be married to <BLANK>.\"",
+        answer: "this woman",
+        category: "Irony",
+        lies: ["a human foghorn", "a walking fire alarm", "a one-woman brass band", "a defective megaphone", "a pocket hurricane"]
+    },
+    {
+        fact: "Scared peasants shunned Sir Humphry Davy as if he were Satanic majesty because they could not understand how he caught fish with <BLANK>.",
+        answer: "electricity",
+        category: "Bizarre Records",
+        lies: ["a magnetized codpiece", "phosphorescent herring", "a clockwork trout", "a pocket volcano", "a mirrored decoy"]
+    },
+    {
+        fact: "Tycho Brahe would turn back from a journey if he encountered <BLANK>, taking it as a sign of evil.",
+        answer: "an old woman or hare",
+        category: "People",
+        lies: ["a crow on the left", "a raven in a wig", "a snuffed candle", "a cracked mirror", "a dropped glove"]
+    },
+    {
+        fact: "Captain C. Kennedy reported that <BLANK> tasted like very young beef.",
+        answer: "lion flesh",
+        category: "Bizarre Records",
+        lies: ["a boiled ostrich egg", "pickled rattlesnake", "whale tongue steak", "camel hump jerky", "beaver tail stew"]
+    },
+    {
+        fact: "Sir G. Richardson exhibited a beetle that had survived sixteen years imbedded in <BLANK>.",
+        answer: "artificial concrete",
+        category: "Bizarre Records",
+        lies: ["a wax candle", "a block of beeswax", "a loaf of sourdough", "a taxidermy owl", "his left nostril"]
+    },
+    {
+        fact: "Mr. Darwin kept a beetle in a covered vessel for a year without killing it, then dropped <BLANK> on it and the beetle walked away unaffected.",
+        answer: "hydrocyanic acid",
+        category: "Science",
+        lies: ["a lit firecracker", "a teaspoon of gin", "a hot coal", "a brass thimble", "a live mouse"]
+    },
+    {
+        fact: "Mr. Green travelled ninety-seven miles in fifty-eight minutes by <BLANK>.",
+        answer: "balloon",
+        category: "Bizarre Records",
+        lies: ["rocket-powered bathtub", "trained cheetah", "giant slingshot", "kite-powered skis", "ostrich stampede"]
+    },
+    {
+        fact: "Dr. Buckland described <BLANK> as having all the small-pox character.",
+        answer: "fossil rain marks",
+        category: "Science",
+        lies: ["a pockmarked trilobite", "his own pitted cheek", "a cratered fossil skull", "a pimpled coprolite", "a pustular oyster shell"]
+    },
+    {
+        fact: "Indian jugglers can handle snakes with impunity because the snakes are <BLANK>.",
+        answer: "drugged with opium",
+        category: "Bizarre Records",
+        lies: ["defanged at birth", "raised on warm milk", "wearing tiny muzzles", "fed butter and ghee", "sewn shut at the mouth"]
+    },
+    {
+        fact: "A drugged snake purchased by Lieutenant Hutton flew at him after three weeks and <BLANK>.",
+        answer: "nearly strangled him",
+        category: "History",
+        lies: ["bit his epaulette", "stole his hat", "coiled round his teacup", "licked his monocle", "winked at the colonel"]
+    },
+    {
+        fact: "Sir John Herschel was subjected to a copious shower of <BLANK> while walking under fir-trees near Table Mountain, even though it was fair outside.",
+        answer: "caterpillars",
+        category: "People",
+        lies: ["ladybugs", "tree frogs", "fir cone scales", "insect husks", "squirrel pee"]
+    },
+    {
+        fact: "Ignatius Pallme saw a <BLANK> running about quite domesticated in the court of a house at Lobeid.",
+        answer: "hyæna",
+        category: "History",
+        lies: ["tame ostrich", "pet crocodile", "dancing baboon", "turbaned monkey", "pocket camel"]
+    },
+    {
+        fact: "<BLANK> tamed a hyæna, took meat from its jaws, and put their hands to its throat without injury.",
+        answer: "The children of the proprietor",
+        category: "Bizarre Records",
+        lies: ["A tipsy lion tamer", "The village butcher", "A myopic taxidermist", "The bishop's wife", "A vegan zookeeper"]
+    },
+    {
+        fact: "An Egyptian vulture breaks <BLANK> by dropping a large stone from mid-air.",
+        answer: "ostrich eggs",
+        category: "Bizarre Records",
+        lies: ["a garden gnome", "a piggy bank", "a snow globe", "a china teacup", "a disco ball"]
+    },
+    {
+        fact: "Jackals are said to roll <BLANK> together to break them.",
+        answer: "ostrich eggs",
+        category: "General",
+        lies: ["stubborn coconuts", "hard-shelled melons", "spiny cactus pears", "rock-hard marula nuts", "desert watermelons"]
+    },
+    {
+        fact: "A <BLANK> expected to compound the alkahest if he could keep his materials digested in a lamp-furnace for seven years.",
+        answer: "London evening newspaper editor",
+        category: "Bizarre Records",
+        lies: ["gullible goldsmith", "crazed apothecary", "one-eyed lapidary", "obsessive clockmaker", "penniless porcelain maker"]
+    },
+    {
+        fact: "The king of Portugal had a hole bored through a <BLANK> to wear it as a necklace on gala days.",
+        answer: "large uncut diamond",
+        category: "Bizarre Records",
+        lies: ["cannonball", "whale's tooth", "gilded coconut", "marble bust", "brass doorknob"]
+    },
+    {
+        fact: "A French soldier stole a diamond from the Russian crown jewels; it had formerly been the eye of a <BLANK>.",
+        answer: "Brahminical idol",
+        category: "History",
+        lies: ["giant Fabergé frog", "mechanical peacock", "jade temple dragon", "clockwork tiger", "marble sphinx cub"]
+    },
+    {
+        fact: "During a Cambridge production of an Aristophanes play, Dr. John Dee introduced an artificial beetle that flew up to Jupiter's palace with a <BLANK> on its back and a basket of provisions.",
+        answer: "man",
+        category: "Bizarre Records",
+        lies: ["a tiny saddle", "a brass homunculus", "a clockwork monkey", "a pocket philosopher", "a marzipan Venus"]
+    },
+    {
+        fact: "Dr. John Dee claimed that the angel Uriel gave him a <BLANK> that showed apparitions and emitted sounds.",
+        answer: "translucent convex stone",
+        category: "Bizarre Records",
+        lies: ["singing brass skull", "haunted pocket watch", "talking silver goblet", "glowing pewter mirror", "cracked crystal radio"]
+    },
+    {
+        fact: "A mob destroyed Dr. Dee's chemical apparatus and stock in trade, but reportedly saved his <BLANK>.",
+        answer: "mirror",
+        category: "Irony",
+        lies: ["pet ferret", "glass eyeball", "lucky spoon", "stuffed raven", "wooden leg"]
+    },
+    {
+        fact: "Brewster said that of the not less than 200,000 <BLANK> sold in London and Paris in three months, perhaps fewer than 1,000 were constructed on scientific principles.",
+        answer: "kaleidoscopes",
+        category: "Bizarre Records",
+        lies: ["corsets", "false moustaches", "mechanical ducks", "glass eyes", "pocket compasses"]
+    },
+    {
+        fact: "The Dean of Ely once walked through the tube of Lord Rosse's Leviathan telescope <BLANK>.",
+        answer: "with an umbrella up",
+        category: "People",
+        lies: ["in full golf tweeds", "wearing a diving helmet", "with a parrot on his hat", "reciting Paradise Lost", "holding a chamber pot"]
+    },
+    {
+        fact: "A Liverpool mathematician won a wager by using <BLANK> lined with pieces of looking-glass as a reflector behind a candle.",
+        answer: "a wooden dish",
+        category: "Bizarre Records",
+        lies: ["a chamber pot", "a sardine tin", "a hollowed-out loaf", "a gravy boat", "a bedpan"]
+    },
+    {
+        fact: "Sir Walter Scott repeatedly witnessed <BLANK> and acted as both the load and a bearer.",
+        answer: "the heavy-person lifting experiment",
+        category: "People",
+        lies: ["a human wheelbarrow race", "a piggyback chess match", "a human pyramid collapse", "a sedan-chair relay", "a fireman's carry race"]
+    },
+    {
+        fact: "During a water shortage on a ship, Captain Declieux shared his drinking water ration with his <BLANK>.",
+        answer: "coffee-plant",
+        category: "People",
+        lies: ["pet parrot", "wooden leg", "first mate's wig", "lucky moustache", "sourdough starter"]
+    },
+    {
+        fact: "A young lady of Norwich spun a pound of <BLANK> into a thread of 168,000 yards.",
+        answer: "combed wool",
+        category: "Bizarre Records",
+        lies: ["cobwebs", "cotton candy", "pulled taffy", "dandelion fluff", "old cassette tape"]
+    },
+    {
+        fact: "Alchemists faked metal transmutation by using <BLANK> that already held gold or silver at the real bottom.",
+        answer: "false-bottomed crucibles",
+        category: "History",
+        lies: ["hollowed-out cabbages", "double-walled walnuts", "rigged eggshells", "hollow pewter dice", "sleight-of-hand cups"]
+    },
+    {
+        fact: "Alchemists staged a demonstration of half-converting nails into gold using <BLANK>.",
+        answer: "soldered half-gold nails",
+        category: "History",
+        lies: ["gold foil and spit", "a brass-plating kit", "mercury and chalk dust", "a mirror-lined box", "sleight-of-hand tongs"]
+    },
+    {
+        fact: "Alchemists secretly introduced gold or silver into a crucible by stirring the mixture with <BLANK> filled with oxide and sealed with wax.",
+        answer: "hollow rods",
+        category: "History",
+        lies: ["a hollowed baguette", "a goose-bone straw", "a clay pipe stem", "a hollowed quill", "a sugar-cane stick"]
+    },
+    {
+        fact: "Superstitious people once believed a poker set upright against the grate formed a cross with the bars and would drive away <BLANK>.",
+        answer: "a witch",
+        category: "History",
+        lies: ["the tax collector", "marauding mice", "a jealous suitor", "the village gossip", "gout"]
+    },
+    {
+        fact: "The chisel used to bore the Grenelle well once sank 85 feet 3 inches into <BLANK> in a single stroke.",
+        answer: "the chalk",
+        category: "Bizarre Records",
+        lies: ["a mammoth cheese wheel", "a seam of warm butter", "a sleeping whale", "the basement of Hell", "a fossilized circus tent"]
+    },
+    {
+        fact: "During the 1586 raising of the Egyptian obelisk in St. Peter's Square, a man in the crowd shouted \"<BLANK>\" to make the stretched ropes contract.",
+        answer: "Wet the ropes",
+        category: "Bizarre Records",
+        lies: ["Scare the ropes stiff!", "Bark at the hemp!", "Bribe the pulleys!", "Salt the knots, boys!", "Pray the slack up!"]
+    },
+    {
+        fact: "Dr. Black expired in an easy posture while holding his cup steady on his knees and <BLANK>.",
+        answer: "without spilling a drop",
+        category: "Bizarre Records",
+        lies: ["checking his pulse", "asking for a refill", "finishing the crossword", "liking his obituary", "complaining about the tea"]
+    },
+    {
+        fact: "To destroy Belisarius's mills, the besiegers threw logs of wood and <BLANK> into the stream.",
+        answer: "dead bodies",
+        category: "Bizarre Records",
+        lies: ["pitch barrels", "greased pigs", "sacks of snakes", "angry beehives", "soap barrels"]
+    },
+    {
+        fact: "At their meeting, almost one quarter of an hour was spent with each beholding the other <BLANK> before one word was spoken.",
+        answer: "with admiration",
+        category: "People",
+        lies: ["like a rare zoo animal", "through opera glasses", "as if sizing up prey", "like two lost mimes", "in medieval helmets"]
+    },
+    {
+        fact: "A ten-grain <BLANK> exposed to Parker's burning lens for thirty minutes opened and foliated like the leaves of a flower.",
+        answer: "diamond",
+        category: "Bizarre Records",
+        lies: ["sugar-crystal", "salt crystal", "mica flake", "fool's gold flake", "bismuth crystal"]
+    },
+    {
+        fact: "Strada described two friends using <BLANK> to talk together across a whole continent.",
+        answer: "sympathetic needles",
+        category: "Bizarre Records",
+        lies: ["giant tin cans", "trained homing bees", "paired voodoo dolls", "moonlight mirror flashes", "human telephone chain"]
+    },
+    {
+        fact: "The semaphore message from Wellington first arrived as '<BLANK>', causing panic until 'the French' followed.",
+        answer: "Wellington defeated",
+        category: "Irony",
+        lies: ["Wellington sacked", "Wellington jailed", "Wellington poisoned", "Wellington buried", "Wellington fired"]
+    },
+    {
+        fact: "Sir Christopher Wren used only <BLANK> to lift more than three thousand tons while demolishing part of old St. Paul's.",
+        answer: "eighteen pounds of gunpowder",
+        category: "History",
+        lies: ["a brass screw jack", "sixteen trained squirrels", "a flock of kites", "a giant see-saw", "a pulley and a prayer"]
+    },
+    {
+        fact: "The French chemist M. Rouelle escaped an explosion he caused without serious injury except for the loss of <BLANK>.",
+        answer: "his wig",
+        category: "People",
+        lies: ["his left eyebrow", "both eyebrows", "his left spectacle lens", "his best cravat", "his moustache"]
+    },
+    {
+        fact: "When M. Rouelle forgot to stir his cauldron, the explosion smashed the laboratory windows and whirled <BLANK> into the garden.",
+        answer: "two hundred auditors",
+        category: "Bizarre Records",
+        lies: ["his best powdered wig", "a crate of chamber pots", "the bishop's false teeth", "Madame Rouelle's corset", "a sack of live eels"]
+    },
+    {
+        fact: "<BLANK> found in Siberia was fresh enough to feed dogs and wild beasts.",
+        answer: "Preserved mammoth flesh",
+        category: "Bizarre Records",
+        lies: ["A frozen cave bear ham", "A glacier-cured steak", "A woolly rhino steak", "An Ice Age lunchbox", "A prehistoric meat locker"]
+    },
+    {
+        fact: "An electrician claimed that with an unlimited length of wire and a <BLANK> he could girdle the universe with a sentence in forty minutes.",
+        answer: "small battery",
+        category: "Bizarre Records",
+        lies: ["hand-cranked magneto", "lemon-powered clock", "static-charged cat", "hamster-wheel dynamo", "clockwork potato"]
+    },
+    {
+        fact: "Thales and Anaxagoras imagined the magnet had <BLANK>.",
+        answer: "a soul",
+        category: "History",
+        lies: ["a secret crush on iron", "a bad case of fleas", "a very sticky ego", "an iron fetish", "a homing instinct"]
     }
 
 ];
