@@ -1,5 +1,7 @@
 # Bamboozle — Multiplayer Platform Plan
 
+Status: in progress — see docs/ROADMAP.md for the live items.
+
 > **Status**: Implementation in progress. Phase 4 (Capacitor) complete.
 > **Last updated**: 2026-03-02
 

@@ -1,5 +1,7 @@
 # Capacitor & Android Setup Guide
 
+Status: reference — Android wrapper/release steps.
+
 ## Overview
 
 Bamboozle is already a React + Vite web app. Capacitor wraps it as a native Android app with access to native APIs (like Google Play Billing). This document covers the setup process.

@@ -1,5 +1,7 @@
 # Asset Generation Guide
 
+Status: reference — branding/asset tool.
+
 This guide describes how to generate and update assets for **Bamboozle** on Android and iOS using the dedicated `AssetGenerator` tool.
 
 ## Key Assets

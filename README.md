@@ -19,6 +19,7 @@ View your app in AI Studio: https://ai.studio/apps/drive/1PPv_q90q-7H5lO9aANaXaV
 - [Multiplayer Plan](docs/MULTIPLAYER_PLAN.md): The master roadmap for Online Friends Mode and monetisation.
 - [Cloudflare Migration Plan](docs/CLOUDFLARE_MIGRATION_PLAN.md): Phase 1 — move the realtime backend off Railway to Workers + Durable Objects (free tier).
 - [Roadmap](docs/ROADMAP.md): Open work only; completed items live in [the archive](docs/ROADMAP-ARCHIVE.md). The portable workflow is [Roadmap Kit](docs/ROADMAP-KIT.md).
+- [Testing](docs/TESTING.md): The pyramid, when to add a test, flake policy, and the local harness. Known drift causes live in [Known Test Failures](docs/KNOWN-TEST-FAILURES.md).
 - [Asset Generator Guide](docs/ASSET_GENERATOR.md): How to use the built-in branding tool.
 - [Android Asset Guide](docs/ANDROID_ASSET_GUIDE.md): Practical steps for native graphics integration.
 - [Implementation Plan](plan.md): The original plan for Online Friends Mode.

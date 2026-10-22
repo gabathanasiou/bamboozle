@@ -1,5 +1,7 @@
 # Server Hardening & Cost Protection
 
+Status: reference — rules ported into the Cloudflare DO.
+
 ## Overview
 
 This document covers the server-side protections needed to ensure cost scales only with paying hosts and to prevent abuse. The goal is **light-touch guardrails**, not heavy restrictions that punish legitimate users.

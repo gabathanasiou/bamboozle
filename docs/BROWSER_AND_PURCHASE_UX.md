@@ -1,5 +1,7 @@
 # Browser Join-Only & Platform UX
 
+Status: reference — browser join-only + purchase UX; the server gate lands with roadmap item 5.
+
 ## Overview
 
 The browser version of Bamboozle is join-only by design. This is enforced in two complementary ways:

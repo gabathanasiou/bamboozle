@@ -1,5 +1,7 @@
 # Bamboozle Architecture Overview
 
+Status: reference — current architecture; the realtime backend is migrating per docs/CLOUDFLARE_MIGRATION_PLAN.md.
+
 ## Introduction
 Bamboozle is a real-time multiplayer party game inspired by Jackbox Games. It involves players submitting funny "lies" to fill in the blanks of trivia questions, then voting on the most believable ones.
 

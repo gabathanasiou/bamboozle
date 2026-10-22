@@ -1,5 +1,7 @@
 # Entitlement & Access Control System
 
+Status: legacy design — phase 2 uses Supabase entitlements + short-lived room tokens (roadmap item 5).
+
 ## Overview
 
 This document details the server-side entitlement system that gates game hosting behind a verified Google Play purchase. Browser users cannot host — this is enforced entirely on the server.

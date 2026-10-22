@@ -1,5 +1,7 @@
 # Google Play Billing — RevenueCat Integration
 
+Status: reference — Android/RevenueCat plan; web checkout + Supabase webhooks are roadmap item 5.
+
 ## Why RevenueCat?
 
 Implementing Google Play Billing from scratch requires you to:

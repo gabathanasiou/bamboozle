@@ -1,5 +1,7 @@
 # Bamboozle Networking Documentation
 
+Status: reference — Socket.IO event contract to preserve in the native-WS migration.
+
 ## Introduction
 
 Bamboozle uses **Socket.IO** for real-time multiplayer functionality. The communication is event-driven between clients (Host, Players, Audience) and the server.

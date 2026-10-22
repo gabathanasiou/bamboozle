@@ -39,3 +39,8 @@ server/node_modules
 # Audio Cache (Local Dev)
 bamboozle_audio_cache
 tmp/bamboozle_audio_cache
+
+# repo-quality-kit
+test-results/
+playwright-report/
+blob-report/

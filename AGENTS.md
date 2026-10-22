@@ -58,3 +58,10 @@ Railway/Socket.IO to Cloudflare Workers + Durable Objects.
   `docs/*.md` or the archive row first.
 - Small, revertible commits; imperative messages. Ask a blocking question instead of
   guessing on protocol, entitlement, or billing behaviour.
+
+## Testing
+
+- Read `docs/TESTING.md` first: unit (Vitest) → integration → e2e (Playwright).
+- Automate only silent-break risk; visual changes get a numbered manual check.
+- Register new spec base names in `scripts/smart-test.mjs`; an orphan fails `lint`.
+- Triage a red run with `test:smart -- --list` + `test:baseline`, never `git checkout`.

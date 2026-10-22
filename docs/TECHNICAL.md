@@ -1,5 +1,7 @@
 # Bamboozle Technical Documentation
 
+Status: reference — audio/TTS pipeline.
+
 ## Audio & Narration System
 
 The narration system is designed to provide a premium, synchronized experience across all devices.

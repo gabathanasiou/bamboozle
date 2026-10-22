@@ -1,5 +1,7 @@
 # Bamboozle Deployment Guide
 
+Status: legacy — Railway deployment; phase 1 replaces it per docs/CLOUDFLARE_MIGRATION_PLAN.md.
+
 ## Railway Deployment (Recommended)
 
 Bamboozle uses a **Node.js + Socket.IO** backend and a **Vite + React** frontend. It is designed to be deployed as a single service or dual services on Railway.

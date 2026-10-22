@@ -1,5 +1,7 @@
 # Bamboozle Game Systems Documentation
 
+Status: reference — game loop/phases.
+
 ## Game Loop & Phasing
 
 The game logic in Bamboozle is organized into distinct phases managed by `services/gameService.ts`.

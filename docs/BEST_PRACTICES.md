@@ -1,5 +1,7 @@
 # Development Best Practices
 
+Status: reference — coding standards.
+
 Guidelines for maintaining and contributing to the Bamboozle codebase.
 
 ## Frontend (React & TypeScript)

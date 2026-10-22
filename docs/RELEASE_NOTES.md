@@ -1,5 +1,7 @@
 # Bamboozle — Release Notes
 
+Status: historical — append-only release notes.
+
 ---
 
 ## v0.7.0 — 2026-02-19
