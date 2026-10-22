@@ -15,7 +15,9 @@ The game logic in Bamboozle is organized into distinct phases managed by `servic
 
 ### 2. **Question Phase** (`GamePhase.WRITING`)
 - **Logic**:
-  - Selects a question from `i18n/questions.ts`.
+  - Selects an unused question through `services/questionPicker.ts` (least-recently-
+    offered categories + per-category bags, so nothing repeats until its pool is
+    exhausted).
   - Displays the fact with `<BLANK>` placeholders.
 - **Actions**:
   - `submitLie`: Players input their funny answers.
@@ -53,5 +55,5 @@ Handles the timing and automatic transitions between sub-phases (especially duri
 
 ## Localization (`i18n/`)
 - Supports **English** (`en`) and **Greek** (`el`).
-- **Questions**: Loaded from `i18n/questions.ts`.
+- **Questions**: Loaded from `i18n/questions/index.ts` (stable IDs from the fact text).
 - **UI Text**: Loaded from `i18n/index.ts` using `getText()`.

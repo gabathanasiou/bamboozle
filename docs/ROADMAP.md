@@ -113,9 +113,3 @@ retired to `docs/ROADMAP-ARCHIVE.md` as **one line**; git history keeps the narr
   cache-hit audio only (no new TTS generation), `npm run lint` green.
 - **Relations:** depends on 4; follows `docs/TESTING.md` (integration probe, not a
   visual test).
-
-- **Request:** Voice and phase sync e2e
-- **Approach:** TBD
-- **Verify:** TBD
-
-**Relations:** none

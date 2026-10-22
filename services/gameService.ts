@@ -2,10 +2,11 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { RealtimeClient } from './realtimeClient';
 import { GameState, GameEvent, Player, GamePhase, Answer, Question, Expression, AudienceMember, Emote } from '../types';
 import { ROUND_TIMER_SECONDS } from '../constants';
-import { getQuestions, Language } from '../i18n/questions';
+import { loadQuestions, Language } from '../i18n/questions';
 import { getNarratorPhrase, getBotNames } from '../i18n/narrator';
 import { sfx } from './audioService';
 import { ProgressionManager } from './ProgressionManager';
+import { pickCategoryOptions, pickQuestion, sanitizeUsedQuestionIds, shuffle } from './questionPicker';
 
 // Helper to generate IDs
 const generateId = () => Math.random().toString(36).substr(2, 9);
@@ -16,34 +17,6 @@ const generateRoomCode = () => {
     result += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return result;
-};
-
-// Fisher-Yates Shuffle
-function shuffle<T>(array: T[]): T[] {
-  const arr = [...array];
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-  return arr;
-}
-
-const generateQuestionId = (str: string) => {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash;
-  }
-  return `q-${Math.abs(hash).toString(36)}`;
-};
-
-// Initial Question Load (Default English)
-const loadQuestions = (lang: Language) => {
-  return getQuestions(lang).map((q) => ({
-    ...q,
-    id: generateQuestionId(q.fact)
-  }));
 };
 
 const getUniqueBotName = (usedNames: string[], language: Language): string => {
@@ -204,9 +177,7 @@ export const useGameService = (
         if (stored) {
           const usedIds = JSON.parse(stored);
           if (Array.isArray(usedIds)) {
-            // Validate IDs exist in current version
-            const validIds = usedIds.filter((uid: string) => questionsRef.current.some(q => q.id === uid));
-            baseState.usedQuestionIds = validIds;
+            baseState.usedQuestionIds = sanitizeUsedQuestionIds(questionsRef.current, usedIds);
           }
         }
       } catch (e) {
@@ -1268,10 +1239,10 @@ export const useGameService = (
       case 'TOGGLE_LANGUAGE':
         if (next.phase === GamePhase.LOBBY) {
           next.language = next.language === 'en' ? 'el' : 'en';
-          // Reload questions
+          // Reload questions and start a clean cycle in the new language
           questionsRef.current = loadQuestions(next.language);
-          // Reset used questions
           next.usedQuestionIds = [];
+          next.recentCategories = [];
 
           sfx.play('CLICK');
           changed = true;
@@ -1398,38 +1369,19 @@ export const useGameService = (
     sfx.play('SWOOSH');
 
     let availableQuestions = questionsRef.current.filter(q => !state.usedQuestionIds.includes(q.id));
-    if (availableQuestions.length < 5) {
+    if (availableQuestions.length === 0) {
+      // The whole bank is exhausted: start a fresh question cycle.
       state.usedQuestionIds = [];
       availableQuestions = questionsRef.current;
     }
 
-    // --- SMART CATEGORY SELECTION ---
-    // 1. Get all technically available categories from unused questions
-    const validCategories = Array.from(new Set(availableQuestions.map(q => q.category)));
-
-    // 2. Split into Fresh (not seen recently) and Stale (seen recently)
-    const recent = state.recentCategories || [];
-    const freshCategories = validCategories.filter(c => !recent.includes(c));
-    const staleCategories = validCategories.filter(c => recent.includes(c));
-
-    // 3. Shuffle both lists
-    const shuffledFresh = shuffle(freshCategories);
-    const shuffledStale = shuffle(staleCategories);
-
-    // 4. Fill slots: Prioritize Fresh
-    const options: string[] = [];
-
-    // Take as many fresh as possible up to 6
-    options.push(...shuffledFresh.slice(0, 6));
-
-    // If we still need more, take from Stale
-    if (options.length < 6) {
-      const needed = 6 - options.length;
-      options.push(...shuffledStale.slice(0, needed));
-    }
-
-    // 5. Update recent categories for next time
-    state.recentCategories = options;
+    const categories = Array.from(new Set(availableQuestions.map(q => q.category)));
+    const { options, history } = pickCategoryOptions({
+      categories,
+      history: state.recentCategories,
+      lastOptions: state.categorySelection?.options ?? [],
+    });
+    state.recentCategories = history;
 
     let candidateIds = Object.keys(state.players).filter(pid => !state.playersWhoPicked.includes(pid));
     if (candidateIds.length === 0) {
@@ -1468,17 +1420,31 @@ export const useGameService = (
     state.phase = GamePhase.INTRO;
     sfx.play('SWOOSH');
 
-    let availableQuestions = questionsRef.current.filter(q => !state.usedQuestionIds.includes(q.id) && q.category === category);
-    if (availableQuestions.length === 0) availableQuestions = questionsRef.current.filter(q => !state.usedQuestionIds.includes(q.id));
-    if (availableQuestions.length === 0) { availableQuestions = questionsRef.current; state.usedQuestionIds = []; }
+    let picked = pickQuestion({
+      questions: questionsRef.current,
+      usedQuestionIds: state.usedQuestionIds,
+      category,
+      avoidId: state.currentQuestion?.id,
+    });
 
-    const selectedQuestion = availableQuestions[Math.floor(Math.random() * availableQuestions.length)];
-    state.currentQuestion = selectedQuestion;
-
-    state.usedQuestionIds = [...state.usedQuestionIds];
-    if (!state.usedQuestionIds.includes(selectedQuestion.id)) {
-      state.usedQuestionIds.push(selectedQuestion.id);
+    if (!picked.question) {
+      // Defensive: the category disappeared between selection and start.
+      const unused = questionsRef.current.find(q => !state.usedQuestionIds.includes(q.id));
+      const fallbackCategory = unused?.category ?? questionsRef.current[0]?.category;
+      if (fallbackCategory) {
+        picked = pickQuestion({
+          questions: questionsRef.current,
+          usedQuestionIds: state.usedQuestionIds,
+          category: fallbackCategory,
+          avoidId: state.currentQuestion?.id,
+        });
+      }
     }
+
+    if (!picked.question) return;
+
+    state.usedQuestionIds = picked.usedQuestionIds;
+    state.currentQuestion = picked.question;
 
     state.submittedLies = {};
     state.roundAnswers = [];

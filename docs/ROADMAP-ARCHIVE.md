@@ -14,3 +14,4 @@ never renumber or reuse.**
 | 1 | Server hardening — room caps, rate limits, sanitisation | `docs/SERVER_HARDENING.md`; `server/index.js` |
 | 2 | Capacitor Android wrapper | `docs/CAPACITOR_ANDROID.md`; `capacitor.config.ts`; `android/` |
 | 3 | Online Friends Mode (single-device multiplayer) | `docs/MULTIPLAYER_PLAN.md`; `services/gameService.ts`; `plan.md` |
+| 12 | Fair, non-repeating question and category selection | `services/questionPicker.ts` + `.test.ts`; `services/gameService.ts`; `i18n/questions/*`; `docs/GAME_SYSTEMS.md` |

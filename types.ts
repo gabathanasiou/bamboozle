@@ -89,7 +89,7 @@ export interface GameState {
   isNarrating: boolean;
   emotes: Emote[]; // Queue of emotes to render
   isOnlineMode: boolean; // New: Track online friend mode
-  recentCategories: string[]; // Track categories shown in the previous round to ensure variety
+  recentCategories: string[]; // Categories ordered oldest offer -> newest (fair rotation)
   revealOrder: string[]; // Array of Answer IDs in the order they should be revealed
   revealStep: number; // Current index in the revealOrder
   revealSubPhase: 'INTRO' | 'CARD' | 'VOTERS' | 'AUTHOR'; // Current sub-phase of the reveal animation

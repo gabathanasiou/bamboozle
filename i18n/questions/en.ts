@@ -1011,7 +1011,7 @@ export const QUESTIONS_EN = [
     {
         fact: "In France, it is illegal to name a pig <BLANK>.",
         answer: "Napoleon",
-        category: "Law",
+        category: "Laws",
         lies: ["Macron", "Louis XIV", "Marie Antoinette", "Zinedine Zidane", "Champagne"]
     },
     {
@@ -1815,7 +1815,7 @@ export const QUESTIONS_EN = [
     {
         fact: "In 1662, 60-year-old Connecticut resident William Potter was executed after confessing to 50 years of <BLANK>.",
         answer: "animal bestiality",
-        category: "Law",
+        category: "Laws",
         lies: ["shaving on the Sabbath", "sleeping during sermons", "wearing women's clothes", "mocking the clergy", "illegal pipe smoking"]
     },
     {
@@ -1901,30 +1901,6 @@ export const QUESTIONS_EN = [
         answer: "never lost a war",
         category: "History",
         lies: ["invented invisibility", "no official borders", "the first disco ball", "no word for 'tired'", "zero tax for redheads"]
-    },
-    {
-        fact: "The King of Hearts is the only king in a deck of cards without a <BLANK>.",
-        answer: "Mustache",
-        category: "Irony",
-        lies: ["waistline", "throne to sit on", "birth certificate", "pair of shoes", "matching queen"]
-    },
-    {
-        fact: "In 1958, a pilot accidentally ejected himself from his plane while flying and <BLANK>.",
-        answer: "Crashed into his own aircraft",
-        category: "Irony",
-        lies: ["landed in a manure pile", "landed in a wedding", "landed on a police car", "was caught by a crane", "landed in a pig pen"]
-    },
-    {
-        fact: "In 1999, the CEO of a company legally changed his name to <BLANK> as a publicity stunt.",
-        answer: "Dot Com",
-        category: "Irony",
-        lies: ["Y2K Bug", "Click Here", "The Internet", "Net Profit", "User Friendly"]
-    },
-    {
-        fact: "The inventor of the microwave only received <BLANK> for his discovery.",
-        answer: "$2",
-        category: "Irony",
-        lies: ["a melted candy bar", "a bag of unpopped corn", "a lukewarm sandwich", "an employee discount", "a pat on the back"]
     },
     {
         fact: "A bride in Cyprus secured a Guinness World Record after she arrived at her wedding wearing <BLANK>.",
