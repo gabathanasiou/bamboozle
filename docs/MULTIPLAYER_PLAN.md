@@ -1,9 +1,9 @@
 # Bamboozle — Multiplayer Platform Plan
 
-Status: in progress — see docs/ROADMAP.md for the live items.
+Status: in progress — realtime phase 1 runs on Cloudflare in preview; see docs/ROADMAP.md for live items.
 
-> **Status**: Implementation in progress. Phase 4 (Capacitor) complete.
-> **Last updated**: 2026-03-02
+> **Status**: Capacitor complete; Cloudflare rooms phase 1 built and on a Netlify deploy preview, production still on Railway until cutover.
+> **Last updated**: 2026-10-22
 
 ---
 
@@ -25,14 +25,14 @@ The majority of the infrastructure already exists. This is not a rebuild, it's a
 | System | Status | Location |
 |---|---|---|
 | React + Vite frontend | ✅ Done | `/` |
-| Socket.IO server | ✅ Done | `server/index.js` |
-| Room creation & codes | ✅ Done | `generateRoomCode()` in server |
+| Realtime server | ✅ Phase 1 | `workers/bamboozle-rooms/` (native WS; `server/` = rollback) |
+| Room creation & codes | ✅ Done | `Directory` DO + `createRoom` |
 | Host/Player architecture | ✅ Done | `services/gameService.ts` |
 | Online mode (full game on player device) | ✅ Done | `isOnlineMode` in `GameState` |
-| Host reconnection + grace period | ✅ Done | `server/index.js` |
-| Room auto-cleanup on empty/disconnect | ✅ Done | `server/index.js` |
-| Google Cloud TTS + GCS caching | ✅ Done | `server/ttsService.js` |
-| Railway deployment | ✅ Done | `docs/DEPLOYMENT.md` |
+| Host reconnection + grace period | ✅ Done | `BambooRoom` DO alarms |
+| Room auto-cleanup on empty/disconnect | ✅ Done | `BambooRoom` DO alarms |
+| Google Cloud TTS + GCS caching | ✅ Done | `workers/.../src/tts.ts` (MD5 key preserved) |
+| Cloudflare deployment | ✅ Preview | Worker + Netlify deploy preview |
 | QR code / shareable URLs | ⚠️ Partial | Room codes exist; needs URL format + QR generator |
 | Capacitor (Android wrapper) | ✅ Done | `capacitor.config.ts`, `android/` |
 | Google Play Billing (RevenueCat) | ❌ Not started | See `docs/BILLING_INTEGRATION.md` |
@@ -53,8 +53,8 @@ Start here, then read each doc in order as you work through a phase:
 | [`ENTITLEMENT_SYSTEM.md`](./ENTITLEMENT_SYSTEM.md) | JWT schema, token refresh strategy, free trial logic, security model |
 | [`BROWSER_AND_PURCHASE_UX.md`](./BROWSER_AND_PURCHASE_UX.md) | Platform detection, browser join-only UI, "Get the app" CTA, post-game purchase prompt, entitlement state machine |
 | [`SERVER_HARDENING.md`](./SERVER_HARDENING.md) | Concurrent room caps, socket rate limiting, what's already handled vs what needs adding |
-| [`DEPLOYMENT.md`](./DEPLOYMENT.md) | Railway deployment for server + frontend, environment variables, Google Cloud setup |
-| [`NETWORKING.md`](./NETWORKING.md) | Socket.IO events reference, state sync strategy, connection lifecycle |
+| [`DEPLOYMENT.md`](./DEPLOYMENT.md) | Cloudflare Worker + Netlify deployment, secrets, preview, rollback |
+| [`NETWORKING.md`](./NETWORKING.md) | Native-WebSocket envelope, event reference, state sync, reconnect lifecycle |
 
 ---
 
@@ -66,15 +66,14 @@ Start here, then read each doc in order as you work through a phase:
 │  Landing page → Enter code / QR → Play             │
 │  "Want to host? Get the app →" CTA on home screen  │
 └─────────────────────┬──────────────────────────────┘
-                      │ WebSocket (Socket.IO)
+                      │ WebSocket (native)
                       ▼
 ┌────────────────────────────────────────────────────┐
-│              SERVER (Node.js / Railway)             │
-│  • Room management       (existing)                 │
-│  • Game state relay      (existing)                 │
-│  • Google Cloud TTS      (existing)                 │
-│  • JWT validation        (new)                      │
-│  • Host gating           (new)                      │
+│        CLOUDFLARE WORKER (bamboozle-rooms)          │
+│  • Directory DO: sockets, room index, caps          │
+│  • BambooRoom DO: state, relay, alarms              │
+│  • Google Cloud TTS + GCS (existing bucket)         │
+│  • authorizeHost() seam (AUTH_MODE=none)            │
 └─────────────────────┬──────────────────────────────┘
                       │ WebSocket (Socket.IO)
                       ▼

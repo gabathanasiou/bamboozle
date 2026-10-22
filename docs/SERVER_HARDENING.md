@@ -1,161 +1,110 @@
 # Server Hardening & Cost Protection
 
-Status: reference — rules ported into the Cloudflare DO.
+Status: implemented in `workers/bamboozle-rooms/`; `server/` keeps the original reference implementation until production cutover.
 
 ## Overview
 
-This document covers the server-side protections needed to ensure cost scales only with paying hosts and to prevent abuse. The goal is **light-touch guardrails**, not heavy restrictions that punish legitimate users.
+The goal is light-touch guardrails: cost and abuse scale with deliberate hosting,
+not with normal play. The Worker also runs on the Cloudflare free plan, so every
+design choice below protects the daily request/CPU/storage budgets.
 
----
+## 1. Room lifecycle
 
-## 1. What's Already Handled ✅
-
-The existing server already covers the most important cleanup cases:
-
-| Scenario | Current Behaviour |
+| Scenario | Behaviour |
 |---|---|
-| **Host disconnects** | 60s grace period → room closed, all clients notified |
-| **All players leave** | 60s grace → room destroyed, TTS cache cleaned |
-| **Player disconnects** | 60s grace → player kicked, room notified |
-| **Host reconnects** | Reclaims existing room within 60s window |
+| Host disconnects | `hostDisconnected`; 60s `host_grace` alarm → `roomClosed` |
+| Host reconnects | `joinRoom` with the same host id inside grace → `becameHost:true`, `hostReconnected` |
+| All sockets leave | 60s `empty_room` alarm → room destroyed |
+| Player disconnects | `playerDisconnected`; 60s `player_kick` alarm → `playerKicked` |
+| Player reconnects | `joinRoom` clears the kick deadline |
+| Stale index row | `checkRoom`/`joinRoom` verifies the room DO and deletes the row |
+| Room older than 6h | Swept on the next `createRoom` |
 
-These mechanisms mean rooms are already self-cleaning. **No additional room lifetime limits are needed.**
+All timers are **Durable Object alarms** persisted in SQLite. No `setTimeout`/
+`setInterval` in the Worker: they block hibernation and bill duration.
 
----
+## 2. Concurrent room caps
 
-## 2. Rate Limiting (Light Touch)
+`MAX_CONCURRENT_ROOMS_PER_HOST = 2`.
 
-### Philosophy
-A legitimate host might play 10 games in a day — finishing one, creating another. That's the whole point. We shouldn't limit *how many rooms they create over time*, only *how many they have open simultaneously*.
+- 1st/2nd room: created normally.
+- 3rd room: oldest room enters host grace (it can be reclaimed or closes after 60s).
+- 4th room: oldest room is closed first, then the active cap is re-applied.
 
-### What We Should Limit
-- **Concurrent open rooms per host**: Max **2 at the same time**. This prevents a single host from holding 20 rooms open simultaneously (e.g., via a script), but doesn't stop sequential play at all.
-  
-### What We Should NOT Limit
-- ❌ Total rooms created per day/hour — too harsh for legitimate use
-- ❌ A global server room cap hardcoded at 100 — arbitrary and punishes real users during busy periods
+This allows unlimited sequential games while preventing one host from holding many
+open rooms. A legitimate player never notices it.
 
-### Implementation
-```javascript
-const MAX_CONCURRENT_ROOMS_PER_HOST = 2;
+## 3. Event rate limit
 
-function countActiveRoomsByHost(hostId) {
-  return Object.values(rooms).filter(r => r.hostId === hostId).length;
-}
+`MAX_EVENTS_PER_WINDOW = 20`, `EVENT_RATE_WINDOW = 10_000`, per socket.
 
-// In createRoom handler:
-socket.on('createRoom', async ({ hostId, token }, callback) => {
-  // ... entitlement check ...
+Applies to `createRoom`, `joinRoom`, `gameStateUpdate`, `hostEvent`,
+`requestNarrator` and `playerEvent`. The counter lives in the WebSocket
+attachment, so it survives hibernation. Acked requests receive
+`{ok:false,error:"RATE_LIMITED"}`; fire-and-forget events are silently dropped.
+Normal play (one action every few seconds) never reaches the limit.
 
-  if (countActiveRoomsByHost(hostId) >= MAX_CONCURRENT_ROOMS_PER_HOST) {
-    callback({ error: 'MAX_CONCURRENT_ROOMS', message: 'You already have active rooms open.' });
-    return;
-  }
+## 4. Input validation & sanitisation
 
-  // Proceed with room creation as normal
-  const roomCode = generateRoomCode();
-  // ...
-});
-```
-
-This blocks a misbehaving client but is **invisible to any normal user** who plays games one at a time.
-
----
-
-## 3. Bot / Spam Protection
-
-The main risk isn't legitimate users — it's someone scripting `createRoom` events without going through the purchase flow. The entitlement system (see `ENTITLEMENT_SYSTEM.md`) is the primary defence here.
-
-However, as a belt-and-suspenders measure, we can add a simple socket-level event rate limiter:
-
-```javascript
-// Track events per socket connection
-const socketEventCounts = {}; // { socketId: { count, windowStart } }
-const EVENT_RATE_WINDOW = 10000; // 10 seconds
-const MAX_EVENTS_PER_WINDOW = 20;
-
-function isSocketRateLimited(socketId) {
-  const now = Date.now();
-  if (!socketEventCounts[socketId]) {
-    socketEventCounts[socketId] = { count: 0, windowStart: now };
-  }
-  
-  const tracker = socketEventCounts[socketId];
-  if (now - tracker.windowStart > EVENT_RATE_WINDOW) {
-    tracker.count = 0;
-    tracker.windowStart = now;
-  }
-  
-  tracker.count++;
-  return tracker.count > MAX_EVENTS_PER_WINDOW;
-}
-
-// Clean up on disconnect
-socket.on('disconnect', () => {
-  delete socketEventCounts[socket.id];
-  // ... rest of disconnect logic
-});
-```
-
-This fires silently — a legitimate user sending one event per second would never hit 20 events in 10 seconds.
-
----
-
-## 4. Input Validation & Sanitization
-
-These are already-common bugs waiting to happen — worth documenting even if not yet implemented:
-
-| Input | Validation Needed |
+| Input | Rule |
 |---|---|
-| **Player name** | Max 20 chars, strip HTML tags |
-| **Lies / answers** | Max 100 chars, strip HTML tags |
-| **Room code on join** | Exactly 4 characters, uppercase letters only |
-| **All socket events** | Require `roomCode` to exist in `rooms` before processing |
+| Player name | max 12, strip HTML tags, trim |
+| Lies / answers | max 100, strip HTML tags, trim |
+| Room code | exactly 4 A–Z after uppercasing/trimming |
+| Host/player id | max 50 |
+| TTS text | max 500 |
+| WebSocket frame | max 256 KiB; larger → `FRAME_TOO_LARGE` |
+| Unknown event | ignored/logged; never throws |
 
-The current server does some of this implicitly (guards on `if (!rooms[roomCode])`), but explicit input sanitization is a future improvement.
+`sanitize()` is the same `replace(/<[^>]*>?/gm,'').substring(0,len).trim()` as the
+old server. Unknown fields pass through, but the interactive text fields are clamped.
 
----
+## 5. Host authority checks
 
-## 5. Logging
+Only the current host socket can send `gameStateUpdate`, `hostEvent` or
+`requestNarrator`. The room DO compares the socket id to `hostSocketId`; a demoted
+host socket (3rd-room grace) is rejected until it reclaims.
 
-Keep a clear audit trail for debugging and future monitoring:
+## 6. TTS cost protection
 
-| Event | What to Log |
+- GCS cache is checked first; a hit costs one metadata request and no TTS billing.
+- The cache key is **MD5** `md5(text + "-" + language).mp3` — never change it.
+- Text is capped at 500 characters.
+- Google access tokens are cached in KV (`expirationTtl: 3300`) plus isolate memory,
+  so token exchanges are ~24/day, not per request.
+- TTS is generated only by the host path; `/api/tts` is a manual fallback.
+
+## 7. Free-plan guardrails
+
+- Workers Free: 100k requests/day, 10 ms CPU/invocation.
+- DO Free (SQLite): 100k requests/day, 13k GB-s/day, 5 GB storage.
+- KV Free: 100k reads/day, 1k writes/day (token cache only).
+- State writes are throttled to at most one every 5s, plus phase changes and one
+  host-grace flush.
+- Socket relay uses hibernation; no polling.
+- If a launch/streamer night exceeds the daily caps, upgrade to Workers Paid ($5/mo);
+  the code needs no changes.
+
+## 8. Logging
+
+Structured console logs (visible in `wrangler tail`):
+
+- `[Room] close <CODE> reason=<reason> lifetime=<s>`
+- `[TTS] CACHE HIT room=<CODE> file=<hash>.mp3`
+- `[TTS] GENERATE room=<CODE> file=<hash>.mp3`
+- `[Directory] room RPC failed …`, `[Room] narrator failed …`
+
+No purchase/identity logging exists in phase 1 because there is no auth or payment
+code. The `authorizeHost()` seam is `AUTH_MODE=none`.
+
+## 9. Cost projection
+
+| Component | Cost |
 |---|---|
-| Room created | `roomCode`, `hostId`, timestamp |
-| Room destroyed | `roomCode`, reason, total lifetime |
-| Room creation rejected | `hostId`, reason (`MAX_CONCURRENT_ROOMS`, entitlement failure) |
-| Purchase validated | `userId`, `productId`, result |
-| Purchase rejected | `userId`, error |
+| Realtime Workers/DO (phase 1 volume) | £0 on the free plan |
+| Google TTS first play of a phrase | ~$0.01–0.05 |
+| GCS cache hit | ~$0 (Google CDN; egress is the variable) |
+| GCS storage (85.5 MiB) | covered by the free tier |
 
----
-
-## 6. Cost Projections
-
-### Per-Game Cost
-| Component | Cost per game |
-|---|---|
-| Server compute (WebSocket, Railway) | ~$0.001 |
-| Google Cloud TTS — first play of a phrase | ~$0.01–0.05 |
-| Google Cloud TTS — subsequent plays (GCS cache) | ~$0.00 (served from CDN) |
-| GCS storage | Negligible (KB per phrase) |
-| **Total per game** | **~$0.01–0.05 (first time), ~$0.001 repeat** |
-
-### Key Insight
-Your TTS caching in GCS means the cost of a phrase is paid **once** across all future games. After the initial warm-up period, the marginal cost per game converges toward almost zero for the audio pipeline.
-
-Cost scales with **new phrases being generated**, not with concurrent users. The existing room cleanup already prevents zombie rooms from accumulating idle costs.
-
----
-
-## 7. Summary: What's Actually New Work
-
-| Item | Priority | Complexity | Notes |
-|---|---|---|---|
-| Concurrent room cap per host | 🟡 Medium | 🟢 Trivial | 5 lines of code |
-| Socket event rate limiter | 🟡 Medium | 🟢 Low | Belt-and-suspenders vs bots |
-| Input sanitization | 🟢 Low | 🟢 Low | Nice to have, not urgent |
-| Structured logging | 🟢 Low | 🟢 Low | For future monitoring |
-| **Room lifetime limits** | ~~High~~ | ~~Medium~~ | **NOT needed — already handled** |
-| **Global room cap** | ~~Medium~~ | ~~Low~~ | **NOT needed — arbitrary, too harsh** |
-| **Per-host room creation rate limit** | ~~Medium~~ | ~~Low~~ | **NOT needed — punishes legit use** |
+Cost scales with **new phrases**, not concurrent players. Room cleanup prevents
+zombie rooms from accumulating idle cost.

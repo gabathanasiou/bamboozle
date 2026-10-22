@@ -14,7 +14,9 @@ View your app in AI Studio: https://ai.studio/apps/drive/1PPv_q90q-7H5lO9aANaXaV
 - [Architecture](docs/ARCHITECTURE.md): High-level overview of the tech stack and system design.
 - [Android & Capacitor](docs/CAPACITOR_ANDROID.md): Guide for the native Android app, bundling, and deployment.
 - [Game Systems](docs/GAME_SYSTEMS.md): Explanation of the game loop, phases, and logic.
-- [Networking](docs/NETWORKING.md): Guide to Socket.IO events and synchronization.
+- [Networking](docs/NETWORKING.md): Native-WebSocket envelope, events, acks and reconnect lifecycle.
+- [Deployment](docs/DEPLOYMENT.md): Cloudflare Worker + Netlify, secrets, preview and Railway rollback.
+- [Server Hardening](docs/SERVER_HARDENING.md): Room caps, rate limits, sanitisation, alarms and free-tier limits.
 - [Best Practices](docs/BEST_PRACTICES.md): Coding standards and guidelines.
 - [Multiplayer Plan](docs/MULTIPLAYER_PLAN.md): The master roadmap for Online Friends Mode and monetisation.
 - [Cloudflare Migration Plan](docs/CLOUDFLARE_MIGRATION_PLAN.md): Phase 1 — move the realtime backend off Railway to Workers + Durable Objects (free tier).
@@ -31,15 +33,15 @@ View your app in AI Studio: https://ai.studio/apps/drive/1PPv_q90q-7H5lO9aANaXaV
 1. Install dependencies:
    `npm install`
 2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+3. Start the realtime Worker in `workers/bamboozle-rooms/` (`npm install && npm run dev`) and the app (`npm run dev`); the client defaults to `http://localhost:8787`.
+4. For the legacy Railway path, enable **Settings → Developer Mode → Use Local Server** and point it at `http://localhost:3001`.
 
 ---
 
 ## 🛠 Admin & Asset Management
 
 The project includes a persistent audio caching system using Google Cloud Storage.
-- **Admin Dashboard**: Access at `/admin` to manage the audio cache.
+- **Admin Dashboard**: Legacy dev-only `/admin` (talks to the Express server, not the Worker). Cache keys must stay `md5(text + "-" + language).mp3`.
 - **Asset Generator**: Run `npm run asset-generator` to create high-res icons and splash screens.
 - **Native Smart Build**: Run `npm run android:build` to build the app and intelligently update graphics.
 - **Static Generation**: Pre-generate all narrator voice lines and trivia questions to minimize costs.

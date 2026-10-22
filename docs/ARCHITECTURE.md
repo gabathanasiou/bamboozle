@@ -1,83 +1,76 @@
 # Bamboozle Architecture Overview
 
-Status: reference — current architecture; the realtime backend is migrating per docs/CLOUDFLARE_MIGRATION_PLAN.md.
+Status: reference — phase 1 realtime is the Cloudflare Worker `bamboozle-rooms`; `server/` stays as rollback until production cutover.
 
 ## Introduction
-Bamboozle is a real-time multiplayer party game inspired by Jackbox Games. It involves players submitting funny "lies" to fill in the blanks of trivia questions, then voting on the most believable ones.
+Bamboozle is a real-time multiplayer party game inspired by Jackbox Games. Players submit funny "lies" to fill in the blanks of trivia questions, then vote on the most believable ones.
 
 ## Core Architecture
 
 ### Tech Stack
-- **Frontend**: React (Vite)
-- **Language**: TypeScript
-- **Styling**: Tailwind CSS
-- **Networking**: Socket.IO (Client & Server)
-- **Audio**: Web Audio API + Google Cloud Text-to-Speech
-- **Animation**: Framer Motion
-- **3D**: React Three Fiber (Avatars)
-- **Native Wrapper**: Capacitor (Android)
-- **Networking**: Socket.IO (Client & Server)
-- **Hosting**: Netlify (Frontend) & Railway (Backend)
-- **Database**: Redis (Session storage)
+- **Frontend**: React (Vite) + TypeScript + Tailwind CSS
+- **Networking**: native WebSocket (`services/realtimeClient.ts`)
+- **Realtime backend**: Cloudflare Worker `bamboozle-rooms` + Durable Objects (SQLite, free plan)
+- **Audio**: Web Audio API + Google Cloud Text-to-Speech, cached in GCS
+- **Animation / 3D**: Framer Motion + React Three Fiber avatars
+- **Native wrapper**: Capacitor (Android)
+- **Hosting**: Netlify (frontend), Cloudflare (realtime), Google Cloud Storage (audio)
+- **Rollback**: Railway/Express/Socket.IO in `server/` until the phase-1 checklist is signed off
+
+## Target Topology
+
+```
+Netlify / Capacitor ── wss ──► Worker bamboozle-rooms
+                                  ├── Directory DO  (sockets, room index, caps, rate limit)
+                                  ├── BambooRoom DO (one per room: state, players, alarms)
+                                  └── /api/tts ──► Google TTS ──► gs://bamboozle-audio-assets
+```
+
+- **Directory** is the single socket gateway because the Worker must choose a DO before the first `joinRoom` frame. It tags sockets with their room and relays to the room DO.
+- **BambooRoom** is authoritative for room state, membership, 60s grace/kick deadlines and TTS requests. It calls back through Directory to broadcast.
+- Socket state survives hibernation in WebSocket attachments + SQLite, never in `setTimeout`/`setInterval`.
 
 ## Distribution Model
 
-Bamboozle uses a **Hybrid Distribution Model**:
+1. **Web (free)**: Netlify. Players join by 4-letter code without an account.
+2. **Android app**: Capacitor; bundles `dist/`, supports live reload in development.
+3. **One paying host** later unlocks hosting; players always join free (phase 2, not built).
 
-1. **Web (Free)**: Hosted on Netlify. Players can join games via browser without an account.
-2. **Android App**: Powered by Capacitor. 
-   - **Development**: Uses live-reload from the host machine.
-   - **Production**: Bundles the code inside the app for performance and offline capability.
-   - **Fullscreen**: Custom native implementation for immersive gameplay.
-   - **Orientation**: Adaptive logic (Portrait for phones, Auto for tablets).
-
-### Data Flow
-1. **Host** acts as the game server for logic (in local dev mode) or coordinates with a backend server.
-2. **Players** and **Audience** connect via WebSockets.
-3. State is managed centrally in `useGameService`.
-4. Updates are broadcast via `gameStateUpdate` events.
+## Data Flow
+1. The **host client** runs the game logic and is the authoritative `GameState`.
+2. Players/audience send `playerEvent`; the host consumes it and broadcasts `gameStateUpdate`.
+3. The room DO stores the latest state (at most every 5s, plus phase changes and host-grace flushes) so reconnects resume correctly.
+4. `requestNarrator` is handled by the room DO: GCS cache check → Google TTS on miss → `playAudio` to the room (online mode) or the host only.
 
 ## Key Systems
 
 ### 1. Game State Management (`services/gameService.ts`)
-The `useGameService` hook is the brain of the application. It:
-- Manages the entire `GameState` object.
-- Handles game phase transitions (LOBBY -> WRITING -> VOTING -> REVEAL).
-- Processes player inputs (answers, votes, emotes).
-- Syncs state with the server via `socket.emit('gameStateUpdate')`.
+`useGameService` owns the `GameState`, phase transitions, player input, narration and reconnection. It talks to the realtime adapter with the same event names as the old Socket.IO client.
 
-### 2. Networking & Online Play (`server/index.js`)
-Real-time communication is powered by Socket.IO.
-- **Rooms**: Players join rooms identified by a 4-letter code.
-- **Events**:
-  - `joinRoom`: Player entry.
-  - `submitLie`: Player answer submission.
-  - `submitVote`: Voting logic.
-  - `playAudio`: Triggering TTS on all clients.
-  - `hostEvent`: Host-specific actions (e.g., starting game).
+### 2. Networking (`workers/bamboozle-rooms/` + `services/realtimeClient.ts`)
+- Rooms use 4-letter A–Z codes.
+- One JSON envelope per frame; event names/payloads are in `docs/NETWORKING.md`.
+- `Directory` enforces the 2-concurrent-room cap, 20 events/10s limit and room lookup.
+- `BambooRoom` owns relay state, host/player grace and alarms.
+- Details and the operational rules live in `docs/SERVER_HARDENING.md`.
 
-### 3. Audio System (`services/audioService.ts`)
-- **SFX**: Preloaded sound effects for game events.
-- **TTS (Text-to-Speech)**:
-  - **Local**: Uses browser `speechSynthesis` API as a fallback.
-  - **Premium**: Uses Google Cloud TTS (Neural2 voices) generated on the server and hosted on **Google Cloud Storage (GCS)** for permanent caching and high-speed delivery.
-- **Safari Compatibility**: A shared `Audio` element is unlocked via user gesture and reused for subsequent playback to prevent auto-play blocking.
-
+### 3. Audio System (`services/audioService.ts`, `workers/bamboozle-rooms/src/tts.ts`)
+- **SFX**: preloaded Web Audio effects.
+- **Local TTS**: browser `speechSynthesis` fallback.
+- **Premium**: Google Cloud TTS (Neural2/Wavenet), cached permanently in GCS. The cache key is **fixed**: `md5(text + "-" + language).mp3`.
+- **Safari/iOS**: one shared `Audio` element unlocked on the first join/ready gesture and reused for all narration.
 
 ### 4. Admin Dashboard (`views/AdminView.tsx`)
-A secure (internal-only) dashboard for maintaining game assets.
-- **Batch Generation**: Automates the process of pre-caching 1000+ voice lines.
-- **Error Management**: Tracks failed TTS requests and enables bulk retries.
-- **Cache Control**: Direct interface to clear or audit the GCS audio bucket.
+Legacy, local-development only. It still targets the Express `/api/admin/*` routes and is **not part of the Worker**; batch generation and cache clearing remain on the old server path.
 
-### 5. UI/UX Design (`views/` & `components/`)
-- **Responsive**: Mobile-first design ensures playability on phones. The Host view is optimized for large screens (TV/Projector).
-- **Animations**: Framer Motion orchestrates smooth transitions between game phases.
-- **Avatars**: 3D avatars are rendered using Three.js (via `@react-three/fiber`) based on a seed string.
+### 5. UI/UX Design
+- Mobile-first player views, TV-oriented host view.
+- Framer Motion transitions; avatars generated from a seed.
+- Emote bursts and reveal choreography are client-side and must not be used as sync evidence — the authoritative state is the host's broadcast.
 
-## Directory Structure
-- `/src/components`: Reusable UI elements.
-- `/src/views`: Main game screens (Host, Player, Lobby).
-- `/src/services`: Logic layers (Game, Audio).
-- `/src/server`: Backend logic.
-- `/src/types.ts`: TypeScript interfaces for State, Player, Question, etc.
+## Repository Structure
+- `services/` — game state, audio, realtime adapter.
+- `views/`, `components/` — host/player UI.
+- `workers/bamboozle-rooms/` — Worker, DOs, TTS, worker tests, smoke script.
+- `server/` — legacy Railway rollback path (do not edit during phase 1).
+- `docs/` — architecture, networking, hardening, deployment, testing.

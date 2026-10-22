@@ -22,27 +22,25 @@ The narration system is designed to provide a premium, synchronized experience a
 ### Web Audio Safari Support
 Safari requires an explicit user gesture to enable audio. Bamboozle solves this by:
 - Using a `shared narrator element` (`narratorAudioRef`).
-- Calling `unlockAudio()` once on the first major user gesture (Join, Ready, Start). It is intentionally **not** called on recurring gestures (e.g. sending emotes) to avoid interrupting active narration.
+- Calling `unlockAudio()` once on the first major user gesture (player Join/Ready, host Start, add-bot). It is intentionally **not** called on recurring gestures (e.g. sending emotes) to avoid interrupting active narration.
+- The player join and ready buttons call it explicitly; earlier builds only unlocked for hosts, which left phone players blocked on Safari.
 - Manually resuming the `AudioContext` and `speechSynthesis` state.
 
 ### Server-Side Integration
 When `usePremiumVoices` is enabled:
 1. Host emits `requestNarrator`.
-2. Server generates/fetches audio and broadcasts `playAudio` with a URL.
-3. All clients (Host & Player) add the URL to their `premiumAudioQueueRef` and play it.
+2. The `BambooRoom` Durable Object checks GCS, generates on a miss and replies `playAudio` with a URL (whole room in online mode, host only otherwise).
+3. All clients add the URL to `premiumAudioQueueRef` and play it through the shared narrator element.
 
 ### Server-Side TTS Architecture
 - **Provider**: Google Cloud Text-to-Speech (Neural2/Wavenet voices).
-- **Storage & Caching**: 
-  - Audio is hashed (MD5) based on text and language.
-  - Files are stored persistently in **Google Cloud Storage (GCS)** in the `bamboozle-audio-assets` bucket.
-  - This architecture ensures zero storage impact on the application server and high-speed delivery via Google's CDN.
-- **Admin Dashboard**: Accessible at `/admin`, providing a UI for:
-  - Batch pre-generating static narrator phrases and question/answer text.
-  - Monitoring real-time generation progress and error logs.
-  - Retrying failed generations with one-click logic.
-  - Clearing the global cache.
-- **Cleanup**: Dynamic per-room audio is no longer deleted manually; the global cache is managed via the Admin UI to maximize reuse across rooms.
+- **Runtime**: `workers/bamboozle-rooms/src/tts.ts` (WebCrypto RS256 service-account JWT; KV token cache).
+- **Storage & Caching**:
+  - Audio is hashed with **MD5** (`md5(text + "-" + language).mp3`). WebCrypto has no MD5, so a small pure-JS implementation is used. **Never change this key** — 3,159 existing GCS objects depend on it.
+  - Files live in **Google Cloud Storage** (`bamboozle-audio-assets`); public URLs are unchanged.
+  - The Worker checks `GET /storage/v1/b/{bucket}/o/{name}` before generating; upload uses `uploadType=media` and then patches `cacheControl` to one year.
+- **Admin Dashboard**: legacy `/admin` UI still talks to the Express `/api/admin/*` routes; it is not ported to the Worker.
+- **Cleanup**: per-room audio is never deleted; the global GCS cache is reused across rooms. The `/api/tts` route remains a manual generation fallback.
 
 ## Troubleshooting
 

@@ -1,54 +1,113 @@
 # Bamboozle Deployment Guide
 
-Status: legacy — Railway deployment; phase 1 replaces it per docs/CLOUDFLARE_MIGRATION_PLAN.md.
+Status: phase 1 — Cloudflare Worker is live for preview; Railway remains the production rollback until the rollout in `docs/CLOUDFLARE_MIGRATION_PLAN.md` §13.
 
-## Railway Deployment (Recommended)
+## Deployed pieces
 
-Bamboozle uses a **Node.js + Socket.IO** backend and a **Vite + React** frontend. It is designed to be deployed as a single service or dual services on Railway.
+| Piece | Where | Notes |
+|---|---|---|
+| Frontend | Netlify (`bamboozlegame`) | `VITE_SERVER_URL` baked at build time |
+| Realtime + TTS | Cloudflare Worker `bamboozle-rooms` | Workers Free + Durable Objects (SQLite) |
+| Audio cache | `gs://bamboozle-audio-assets` | 3,159 existing MP3s; do not change the MD5 key |
+| Rollback | Railway `server/` | Keep until production cutover |
 
-### Environment Variables
+- Worker: `https://bamboozle-rooms.gabathanasiou.workers.dev`
+- Health: `/health`, version: `/api/version`, TTS: `POST /api/tts`, sockets: `/ws`
 
-You **MUST** add these variables to your Railway project settings:
+## Local development
 
-| Variable | Description | Example |
-| :--- | :--- | :--- |
-| `NODE_ENV` | Environment mode | `production` |
-| `PORT` | Port for the server to listen on | `3001` or `8080` (Railway sets this automatically) |
-| `GCS_BUCKET_NAME` | **Required**. The name of your Google Cloud Storage bucket for audio. | `bamboozle-audio-assets` |
-| `GOOGLE_APPLICATION_CREDENTIALS_JSON` | **Required**. The full JSON content of your Google Service Account Key. | `{"type": "service_account", ...}` |
-| `VITE_SERVER_URL` | **Frontend Only**. The URL of your deployed backend. | `https://bamboozle-backend.up.railway.app` |
+```bash
+# terminal 1 — Worker on :8787
+cd workers/bamboozle-rooms
+npm install
+cp .dev.vars.example .dev.vars          # or create it with the secret below
+npm run dev
 
-### Deployment Steps
+# terminal 2 — frontend on :3000
+npm run dev                             # defaults to http://localhost:8787
 
-1. **Connect GitHub**: Link your Bamboozle repository to Railway.
-2. **Add Service (Server)**:
-   - Root Directory: `/server`
-   - Build Command: `npm install`
-   - Start Command: `npm start`
-   - Add variables: `GCS_BUCKET_NAME`, `GOOGLE_APPLICATION_CREDENTIALS_JSON`
-3. **Add Service (Client/Frontend)**:
-   - Root Directory: `/` (Root)
-   - Build Command: `npm install && npm run build`
-   - Start Command: `npm run preview -- --host --port $PORT`
-   - Add variable: `VITE_SERVER_URL` (Pointing to your Server URL)
+# unit tests
+npm run test:unit                       # client-adapter tests (root)
+npm run test:worker                     # workerd/DO tests
+npm run test:e2e                        # Playwright starts the Worker + preview
 
-### Google Cloud Setup
+# protocol/TTS smoke against a running Worker
+cd workers/bamboozle-rooms && npm run smoke
+```
 
-1. **Create Bucket**: Go to Google Cloud Console > Cloud Storage > Create Bucket.
-   - Name: `bamboozle-audio-assets` (or similar)
-   - Access Control: **Uniform**
-   - **IMPORTANT**: Make the bucket **Public**.
-     - Permissions > Add Principal > `allUsers` > Role: `Storage Object Viewer`
-2. **Create Service Account**:
-   - Go to IAM & Admin > Service Accounts.
-   - Create new account > Role: `Storage Object Admin` + `Cloud Text-to-Speech API User`.
-   - Keys > Add Key > JSON.
-   - Copy the contents of this JSON file into the `GOOGLE_APPLICATION_CREDENTIALS_JSON` variable in Railway.
+`.dev.vars` (gitignored) needs the compact service-account JSON:
 
-### Verification
+```text
+GOOGLE_APPLICATION_CREDENTIALS_JSON={"type":"service_account",...}
+```
 
-After deployment:
-1. Go to your **Admin Dashboard** (e.g., `https://your-frontend.railway.app/admin`).
-2. Check **Server Status**: Should be "Online".
-3. Try **Generate Phrases (EN)**: Logs should show `[TTS] CACHE HIT` or `[TTS] GENERATING`.
-4. If successful, your audio pipeline is live!
+The old local server (`node server/index.js`, :3001) still works as rollback: enable **Settings → Developer Mode → Use Local Server** and set `http://localhost:3001`.
+
+## First-time Worker setup
+
+```bash
+cd workers/bamboozle-rooms
+npm install
+
+# One KV namespace is used only for the short-lived Google access token.
+npx wrangler kv namespace create TTS_KV
+# put the returned id in wrangler.toml under [[kv_namespaces]]
+
+npx wrangler deploy
+node -e "const fs=require('fs');process.stdout.write(JSON.stringify(JSON.parse(fs.readFileSync('../../google-credentials.json','utf8'))))" \
+  | npx wrangler secret put GOOGLE_APPLICATION_CREDENTIALS_JSON
+```
+
+`wrangler.toml` already declares:
+
+- `ROOMS` → `BambooRoom`, `DIRECTORY` → `Directory`, migration tag `v1`, `new_sqlite_classes`
+- `AUTH_MODE = "none"` (phase 1 only)
+- `GCS_BUCKET_NAME = "bamboozle-audio-assets"`
+- `ALLOWED_ORIGINS`: Netlify production, deploy-preview pattern, localhost, Capacitor
+- `HOST_GRACE_MS`, `PLAYER_KICK_MS`, `EMPTY_ROOM_MS` (default 60000; e2e overrides to 8000)
+
+## Netlify
+
+Set the **deploy-preview** context (production stays on Railway for now):
+
+```bash
+npx netlify env:set VITE_SERVER_URL https://bamboozle-rooms.gabathanasiou.workers.dev --context deploy-preview
+npm run build                           # with VITE_SERVER_URL set
+npx netlify deploy --dir=dist --no-build # draft preview URL
+```
+
+`netlify deploy --build` may rebuild without your shell env; either export
+`VITE_SERVER_URL` for the build or set it in the Netlify UI. The preview origin
+(`https://<deploy-id>--bamboozlegame.netlify.app`) is already allowed by the
+Worker's `ALLOWED_ORIGINS` pattern.
+
+CORS/WS origins are never `*` in production. Add a custom domain to
+`ALLOWED_ORIGINS` before pointing DNS at it.
+
+## Google Cloud
+
+1. Keep the existing public bucket `bamboozle-audio-assets`.
+2. The service account needs **Storage Object Admin** and **Cloud Text-to-Speech API User**.
+3. Never commit `google-credentials.json`; production uses `wrangler secret`.
+4. GCS object names stay `md5(text + "-" + language).mp3`. Changing the hash orphans
+   the existing 3,159 lines and re-bills every phrase.
+
+## Rollout / rollback
+
+1. Preview (done): Worker deployed alongside Railway, Netlify deploy-preview points at it.
+2. Run the manual checklist in `docs/CLOUDFLARE_MIGRATION_PLAN.md` §12.
+3. Switch production `VITE_SERVER_URL` to the Worker; monitor `wrangler tail` + analytics for 48h.
+4. After a stable week, retire the Railway service and archive `server/` (do not delete history).
+5. Rollback at any time before step 4: set `VITE_SERVER_URL` back to the Railway URL and redeploy Netlify.
+
+## Verification
+
+```bash
+curl https://bamboozle-rooms.gabathanasiou.workers.dev/health
+cd workers/bamboozle-rooms
+SMOKE_URL=https://bamboozle-rooms.gabathanasiou.workers.dev npm run smoke
+npx wrangler tail
+```
+
+Healthy signs: `[TTS] CACHE HIT`, `[Room] close <CODE> reason=...`, no `INTERNAL_ERROR`
+or `TTS_CREDENTIALS_INVALID_JSON` in the tail.

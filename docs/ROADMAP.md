@@ -23,7 +23,7 @@ retired to `docs/ROADMAP-ARCHIVE.md` as **one line**; git history keeps the narr
 
 ---
 
-## 4. Cloudflare realtime phase 1 — leave Railway (`[ ]`)
+## 4. Cloudflare realtime phase 1 — leave Railway (`[~]`)
 
 - **Request:** Bamboozle's realtime backend runs on Cloudflare Workers + Durable Objects
   on the **free plan**; no Railway. Google TTS + the existing GCS audio cache stay.
@@ -36,6 +36,9 @@ retired to `docs/ROADMAP-ARCHIVE.md` as **one line**; git history keeps the narr
 - **Verify:** plan §12 checklist — two browsers + phone, full round, host/player
   reconnect grace, 2/3-room caps, rate limit, TTS cache hit, iOS Safari audio,
   Netlify deploy preview, `npm run build`.
+- **Status (2026-10-22):** Worker + Preview built; `wrangler dev`/deployed smoke, 3
+  Playwright room specs and WebKit iPhone emulation pass. Remaining before closing:
+  production cutover, real-phone iOS check, and the 48h monitoring window.
 - **Relations:** blocks 5 and 10; supersedes Railway in `docs/DEPLOYMENT.md`.
 
 ## 5. Paid host entitlements — phase 2 (`[ ]`)
@@ -95,3 +98,24 @@ retired to `docs/ROADMAP-ARCHIVE.md` as **one line**; git history keeps the narr
 - **Verify:** existing phrase is a cache hit from R2; new phrase uploads; old GCS
   URLs still resolve until the switch is complete.
 - **Relations:** depends on 4; cost ≈ $0 on R2 free tier (10 GB, 1M writes).
+
+## 11. Voice and phase sync e2e (`[ ]`)
+
+- **Request:** on slow connections, clients can hear narration late or advance to the
+  next screen before everyone has finished, producing a desynced round.
+- **Approach:** add a focused Playwright spec (or extend `e2e/realtime.spec.ts`) with
+  three contexts and per-client `page.route` delays on `storage.googleapis.com` audio
+  (0s / 2s / 5s). Assert every client receives `playAudio`/state and that the host's
+  reveal → leaderboard transition does not leave a slow client on the previous screen;
+  the slow client must catch up after its audio finishes. Drive with `expect.poll`,
+  never `waitForTimeout`; register the spec base name in `scripts/smart-test.mjs`.
+- **Verify:** run with 0/2/5s delays repeatedly; no client stuck, same room state,
+  cache-hit audio only (no new TTS generation), `npm run lint` green.
+- **Relations:** depends on 4; follows `docs/TESTING.md` (integration probe, not a
+  visual test).
+
+- **Request:** Voice and phase sync e2e
+- **Approach:** TBD
+- **Verify:** TBD
+
+**Relations:** none

@@ -88,9 +88,15 @@ structural selector.
 ## Harness facts
 
 - `playwright.config.ts` runs the **production preview** by default on port `4173`
-  (`PLAYWRIGHT_DEV=1` uses the dev server instead). Every run owns its server
+  (`PLAYWRIGHT_DEV=1` uses the dev server instead) and starts the Cloudflare Worker on
+  `:8787` with 8s grace/kick windows. Every run owns its servers
   (`reuseExistingServer: false`) so a foreign process fails fast instead of being tested.
-  `PLAYWRIGHT_PORT=<n>` isolates a run.
+  `PLAYWRIGHT_PORT=<n>` isolates the app port.
+- Worker tests run in workerd via `npm run test:worker`; root `test:unit` excludes
+  `workers/**` because it is a node-environment suite.
+- Playwright launches Chromium with `--disable-speech-api --mute-audio`; the realtime
+  spec installs a silent fake `speechSynthesis` so narration never reaches the host's
+  speakers and the reveal advances immediately.
 - Retries: 1 locally / 2 on CI; `trace: 'on-first-retry'`; `reducedMotion: 'reduce'`;
   `@perf` and `@quarantine` are excluded by default.
 - `npm run test:smart` selects only specs the diff can affect (RULES map in

@@ -1,6 +1,6 @@
 # Entitlement & Access Control System
 
-Status: legacy design — phase 2 uses Supabase entitlements + short-lived room tokens (roadmap item 5).
+Status: **phase-2 design only — not implemented.** Phase 1 ships `workers/bamboozle-rooms/src/auth.ts` with `authorizeHost()` and `AUTH_MODE=none`; `createRoom` accepts an optional `token` but ignores it. Roadmap item 5 replaces the client-trusted JWT below with a separate Supabase project + short-lived room tokens.
 
 ## Overview
 
