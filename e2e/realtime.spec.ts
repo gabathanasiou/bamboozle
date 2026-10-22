@@ -98,11 +98,21 @@ async function joinRoom(page: Page, code: string, name: string, audience = false
   await page.getByRole('button', { name: /^ENTER$/i }).click();
 
   const nickname = page.getByPlaceholder('NICKNAME');
-  await expect(nickname).toBeVisible({ timeout: 15000 });
-  await nickname.fill(name);
-  await page
-    .getByRole('button', { name: audience ? /^Join Audience$/i : /^Join Game$/i })
-    .click();
+  const lobby = page.getByRole('button', { name: /READY UP/i });
+  await expect
+    .poll(
+      async () => (await nickname.count()) + (await lobby.count()),
+      { timeout: 15000 },
+    )
+    .toBeGreaterThan(0);
+
+  // A reconnect can skip the name step (the room already knows this player).
+  if (await nickname.isVisible()) {
+    await nickname.fill(name);
+    await page
+      .getByRole('button', { name: audience ? /^Join Audience$/i : /^Join Game$/i })
+      .click();
+  }
 }
 
 async function readyAndStart(host: Page, player: Page): Promise<void> {
@@ -210,8 +220,28 @@ test('host reconnects inside grace; a disconnected player is kicked after grace'
   await expect(reconnectedHost.getByRole('button', { name: /START GAME/i })).toBeVisible({ timeout: 15000 });
   await expect(player.getByText(/Host Disconnected/i)).toHaveCount(0, { timeout: 15000 });
 
-  // Close the player and wait out the 8s kick window configured for e2e.
+  // Rejoin inside grace cancels the kick: wait out the 8s window and confirm
+  // the player is still in the host's lobby.
   await player.close();
+  const reconnectedPlayer = await playerContext.newPage();
+  await joinRoom(reconnectedPlayer, code, 'PlayerOne');
+  await expect(reconnectedPlayer.getByRole('button', { name: /READY UP/i })).toBeVisible({
+    timeout: 15000,
+  });
+
+  const kickWindowStart = Date.now();
+  await expect
+    .poll(
+      async () => {
+        const text = (await reconnectedHost.locator('body').innerText()).toUpperCase();
+        return Date.now() - kickWindowStart > 9000 && text.includes('PLAYERONE');
+      },
+      { timeout: 15000 },
+    )
+    .toBe(true);
+
+  // A second close is not cancelled, so the kick fires.
+  await reconnectedPlayer.close();
   await expect
     .poll(
       async () => {
