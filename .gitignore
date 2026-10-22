@@ -27,6 +27,18 @@ dist-ssr
 google-credentials.json
 *.json
 
+# Workers config files are source, not secrets
+!workers/bamboozle-rooms/package.json
+!workers/bamboozle-rooms/package-lock.json
+!workers/bamboozle-rooms/tsconfig.json
+
+# Worker local dev
+workers/bamboozle-rooms/.dev.vars
+workers/bamboozle-rooms/.wrangler
+
+# Netlify CLI link state
+.netlify
+
 # Env Files
 .env
 .env.*

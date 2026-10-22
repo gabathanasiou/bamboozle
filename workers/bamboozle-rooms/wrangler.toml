@@ -1,0 +1,33 @@
+name = "bamboozle-rooms"
+main = "src/index.ts"
+compatibility_date = "2026-10-22"
+
+# Separate Worker and Durable Object namespace from Lemon Schedule. Do not reuse
+# lemon-rooms names, ids, secrets or code.
+
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "BambooRoom"
+
+[[durable_objects.bindings]]
+name = "DIRECTORY"
+class_name = "Directory"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["BambooRoom", "Directory"]
+
+[[kv_namespaces]]
+binding = "TTS_KV"
+id = "dd08b2aa23444472b24cb3b83899df13"
+
+[vars]
+AUTH_MODE = "none"
+GCS_BUCKET_NAME = "bamboozle-audio-assets"
+ALLOWED_ORIGINS = "https://bamboozlegame.netlify.app,https://*--bamboozlegame.netlify.app,http://localhost:*,http://127.0.0.1:*,capacitor://localhost,https://localhost,http://localhost"
+HOST_GRACE_MS = "60000"
+PLAYER_KICK_MS = "60000"
+EMPTY_ROOM_MS = "60000"
+
+[observability]
+enabled = true

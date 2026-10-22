@@ -1,0 +1,26 @@
+{
+  "name": "bamboozle-rooms",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --port 8787",
+    "dev:e2e": "wrangler dev --port 8787 --var HOST_GRACE_MS:8000 --var PLAYER_KICK_MS:8000 --var EMPTY_ROOM_MS:8000",
+    "deploy": "wrangler deploy",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "smoke": "node scripts/smoke.mjs"
+  },
+  "dependencies": {
+    "js-md5": "^0.9.2"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.4.6",
+    "@cloudflare/workers-types": "^5.20261022.1",
+    "@types/js-md5": "^0.8.0",
+    "typescript": "~5.8.2",
+    "vitest": "^4.1.0",
+    "wrangler": "^4.151.3"
+  }
+}
