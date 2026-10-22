@@ -9,6 +9,9 @@
     "preview": "vite preview",
     "asset-generator": "vite -c tools/AssetGenerator/vite.config.ts",
     "android:build": "node scripts/build-native.js",
+    "roadmap": "node scripts/roadmap.mjs",
+    "roadmap:check": "node scripts/roadmap.mjs check",
+    "lint": "npm run roadmap:check",
     "postinstall": "cd server && npm install"
   },
   "dependencies": {
