@@ -220,11 +220,30 @@ test('host reconnects inside grace; a disconnected player is kicked after grace'
   await expect(reconnectedHost.getByRole('button', { name: /START GAME/i })).toBeVisible({ timeout: 15000 });
   await expect(player.getByText(/Host Disconnected/i)).toHaveCount(0, { timeout: 15000 });
 
-  // Rejoin inside grace cancels the kick: wait out the 8s window and confirm
-  // the player is still in the host's lobby.
+  // Rejoin inside grace cancels the kick: the stored session must be offered
+  // immediately when the player taps Join Game.
   await player.close();
   const reconnectedPlayer = await playerContext.newPage();
-  await joinRoom(reconnectedPlayer, code, 'PlayerOne');
+  await reconnectedPlayer.goto('/');
+  await reconnectedPlayer.getByRole('button', { name: /Join Game/i }).click();
+  await expect(reconnectedPlayer.getByText(/JOIN LAST GAME/i)).toBeVisible({ timeout: 15000 });
+  await expect(reconnectedPlayer.getByText(code, { exact: true }).first()).toBeVisible();
+  await reconnectedPlayer.getByText(code, { exact: true }).first().click();
+
+  // The stored player is already in the host state, so a successful rejoin
+  // can land directly in the lobby instead of asking for a name again.
+  const rejoinName = reconnectedPlayer.getByPlaceholder('NICKNAME');
+  const rejoinLobby = reconnectedPlayer.getByRole('button', { name: /READY UP/i });
+  await expect
+    .poll(
+      async () => (await rejoinName.count()) + (await rejoinLobby.count()),
+      { timeout: 15000 },
+    )
+    .toBeGreaterThan(0);
+  if (await rejoinName.isVisible()) {
+    await rejoinName.fill('PlayerOne');
+    await reconnectedPlayer.getByRole('button', { name: /^Join Game$/i }).click();
+  }
   await expect(reconnectedPlayer.getByRole('button', { name: /READY UP/i })).toBeVisible({
     timeout: 15000,
   });

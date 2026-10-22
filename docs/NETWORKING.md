@@ -74,6 +74,7 @@ Status: phase 1 — native WebSocket transport for the Cloudflare Worker. Event 
 3. `joinRoom` acks with the current state; clients render it.
 4. On transport loss the adapter retries with exponential backoff (0.5s → 8s, jitter, unlimited) and emits `connect`/`disconnect`.
 5. On reconnect, `gameService` re-sends `joinRoom`; the host reclaims within grace, players cancel their kick, and both receive the latest state.
+6. After a full reload, `PlayerView` offers **JOIN LAST GAME** from `bamboozle_room_code` immediately; a failed join clears the stale code.
 6. On close, the Directory informs the room DO. Host close → `hostDisconnected` + 60s grace; player close → `playerDisconnected` + 60s kick; last socket out → empty-room grace.
 
 ## Client adapter

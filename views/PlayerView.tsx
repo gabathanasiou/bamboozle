@@ -28,7 +28,17 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ state, actions, playerId
     const [inputCode, setInputCode] = useState('');
     const [joinName, setJoinName] = useState('');
     const [codeError, setCodeError] = useState('');
-    const [rejoinCode, setRejoinCode] = useState<string | null>(null);
+    // Show a stored session immediately. The old code only showed the card
+    // after checkRoomExists acked; on a fresh page that ack could be missed
+    // because the socket was not constructed yet, which hid the rejoin entry.
+    const [rejoinCode, setRejoinCode] = useState<string | null>(() => {
+        try {
+            const stored = localStorage.getItem('bamboozle_room_code');
+            return stored && /^[A-Z]{4}$/.test(stored) ? stored : null;
+        } catch {
+            return null;
+        }
+    });
 
     const me = state.players[playerId];
     const amAudience = state.audience[playerId];
@@ -42,14 +52,19 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ state, actions, playerId
         const storedCode = localStorage.getItem('bamboozle_room_code');
         import.meta.env.DEV && console.log('[PlayerView] Stored room code in localStorage:', storedCode);
         if (storedCode && storedCode.length === 4) {
+            // The card is already visible from state; this check only removes a
+            // stale code in the background. If the ack never arrives, clicking
+            // the card still validates by attempting joinRoom.
+            setRejoinCode(storedCode);
             actions.checkRoomExists(storedCode, (exists: boolean) => {
                 import.meta.env.DEV && console.log('[PlayerView] Room check result for', storedCode, ':', exists);
-                if (exists) {
-                    setRejoinCode(storedCode);
-                } else {
+                if (!exists) {
+                    setRejoinCode(null);
                     localStorage.removeItem('bamboozle_room_code');
                 }
             });
+        } else if (!storedCode) {
+            setRejoinCode(null);
         }
     }, [isJoined, joinStep, actions]);
 
