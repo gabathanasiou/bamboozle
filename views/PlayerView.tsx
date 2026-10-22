@@ -178,6 +178,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ state, actions, playerId
                                     initial={{ opacity: 0, scale: 0.9 }}
                                     animate={{ opacity: 1, scale: 1 }}
                                     onClick={() => {
+                                        actions.unlockAudio();
                                         sfx.play('CLICK');
                                         actions.joinRoom(rejoinCode, (success: boolean, error?: string) => {
                                             if (success) {
@@ -205,6 +206,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ state, actions, playerId
                                     const codeToUse = inputCode || rejoinCode;
                                     if (!codeToUse) return;
 
+                                    actions.unlockAudio();
                                     actions.joinRoom(codeToUse, (success: boolean, error?: string, becameHost?: boolean) => {
                                         if (success) {
                                             sfx.play('CLICK');
@@ -269,7 +271,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ state, actions, playerId
                                     {/* Join as Player if Lobby */}
                                     <button
                                         disabled={!joinName || Object.keys(state.players).length >= 6}
-                                        onClick={() => { sfx.play('CLICK'); actions.sendJoin(joinName, joinName); }}
+                                        onClick={() => { actions.unlockAudio(); sfx.play('CLICK'); actions.sendJoin(joinName, joinName); }}
                                         className="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-400 hover:to-emerald-500 text-white py-5 rounded-2xl font-black text-2xl shadow-xl transform transition active:scale-95 disabled:opacity-50 disabled:transform-none uppercase tracking-wide flex items-center justify-center relative overflow-hidden group"
                                     >
                                         <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
@@ -278,7 +280,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ state, actions, playerId
 
                                     <button
                                         disabled={!joinName}
-                                        onClick={() => { sfx.play('CLICK'); actions.sendJoinAudience(joinName, joinName); }}
+                                        onClick={() => { actions.unlockAudio(); sfx.play('CLICK'); actions.sendJoinAudience(joinName, joinName); }}
                                         className="w-full bg-blue-600/20 hover:bg-blue-600/40 text-blue-200 hover:text-white py-4 rounded-2xl font-bold text-lg border-2 border-blue-500/30 flex items-center justify-center gap-2 transform transition active:scale-95 disabled:opacity-50 uppercase"
                                     >
                                         <Users size={20} /> Join Audience
@@ -289,7 +291,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ state, actions, playerId
                                     {/* Only Join Audience if In Progress */}
                                     <button
                                         disabled={!joinName}
-                                        onClick={() => { sfx.play('CLICK'); actions.sendJoinAudience(joinName, joinName); }}
+                                        onClick={() => { actions.unlockAudio(); sfx.play('CLICK'); actions.sendJoinAudience(joinName, joinName); }}
                                         className="w-full bg-blue-600 hover:bg-blue-500 text-white py-5 rounded-2xl font-black text-xl shadow-lg flex items-center justify-center gap-2 transform transition active:scale-95 disabled:opacity-50 uppercase"
                                     >
                                         <Users size={24} /> Join Audience

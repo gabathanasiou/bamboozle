@@ -32,13 +32,13 @@ const RULES = [
   { g: 'e2e/helpers.ts', s: 'ALL' },
   // starter mapping — replace with feature rules as specs appear
   { g: 'src/**', s: CANARY },
-  { g: 'services/**', s: CANARY },
+  { g: 'services/**', s: [...CANARY, 'realtime'] },
   { g: 'views/**', s: CANARY },
   { g: 'components/**', s: CANARY },
   { g: 'i18n/**', s: CANARY },
   { g: 'constants.ts', s: CANARY },
   { g: 'server/**', s: CANARY },
-  { g: 'workers/**', s: CANARY },
+  { g: 'workers/**', s: [...CANARY, 'realtime'] },
   { g: 'lib/**', s: CANARY },
   { g: 'app/**', s: CANARY },
   // core app shell — full suite

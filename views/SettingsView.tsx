@@ -8,7 +8,7 @@ export const SettingsView: React.FC = () => {
     const navigate = useNavigate();
     const [useLocalServer, setUseLocalServer] = useState(false);
     const [usePremiumVoices, setUsePremiumVoices] = useState(true);
-    const [customServerUrl, setCustomServerUrl] = useState('http://localhost:3001');
+    const [customServerUrl, setCustomServerUrl] = useState('http://localhost:8787');
     const [isChangelogOpen, setIsChangelogOpen] = useState(false);
 
     const [isLoaded, setIsLoaded] = useState(false);
@@ -16,9 +16,9 @@ export const SettingsView: React.FC = () => {
     // Get server URL for changelog modal
     const getServerUrl = () => {
         if (useLocalServer) {
-            return customServerUrl || 'http://localhost:3001';
+            return customServerUrl || 'http://localhost:8787';
         }
-        return import.meta.env.VITE_SERVER_URL || 'http://localhost:3001';
+        return import.meta.env.VITE_SERVER_URL || 'http://localhost:8787';
     };
 
     useEffect(() => {
@@ -111,7 +111,7 @@ export const SettingsView: React.FC = () => {
                                         value={customServerUrl}
                                         onChange={(e) => setCustomServerUrl(e.target.value)}
                                         className="w-full bg-black/40 border border-white/20 rounded-xl px-4 py-3 text-white font-mono text-sm focus:outline-none focus:border-yellow-400 focus:ring-1 focus:ring-yellow-400 transition-all"
-                                        placeholder="http://localhost:3001"
+                                        placeholder="http://localhost:8787"
                                     />
                                 </div>
                             )}

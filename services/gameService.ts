@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { io, Socket } from 'socket.io-client';
+import { RealtimeClient } from './realtimeClient';
 import { GameState, GameEvent, Player, GamePhase, Answer, Question, Expression, AudienceMember, Emote } from '../types';
 import { ROUND_TIMER_SECONDS } from '../constants';
 import { getQuestions, Language } from '../i18n/questions';
@@ -115,6 +115,30 @@ const INITIAL_STATE: GameState = {
   isPaused: false
 };
 
+/**
+ * Server room state is deliberately minimal when a room is first created and
+ * may be up to 5s old after a write throttle. Fill absent arrays/objects so a
+ * rejoin cannot crash a view that expects the full client GameState.
+ */
+const normalizeState = (incoming: unknown): GameState => {
+  const source = incoming && typeof incoming === 'object'
+    ? (incoming as Partial<GameState>)
+    : {};
+  return {
+    ...INITIAL_STATE,
+    ...source,
+    players: source.players ?? {},
+    audience: source.audience ?? {},
+    submittedLies: source.submittedLies ?? {},
+    roundAnswers: source.roundAnswers ?? [],
+    usedQuestionIds: Array.isArray(source.usedQuestionIds) ? source.usedQuestionIds : [],
+    playersWhoPicked: Array.isArray(source.playersWhoPicked) ? source.playersWhoPicked : [],
+    emotes: Array.isArray(source.emotes) ? source.emotes : [],
+    recentCategories: Array.isArray(source.recentCategories) ? source.recentCategories : [],
+    revealOrder: Array.isArray(source.revealOrder) ? source.revealOrder : [],
+  };
+};
+
 export const useGameService = (
   role: 'HOST' | 'PLAYER' | 'AUDIENCE',
   options: {
@@ -131,10 +155,10 @@ export const useGameService = (
       const parsed = JSON.parse(settings);
       if (parsed.useLocalServer) {
         // Use custom URL if provided, otherwise default to localhost:3001
-        return parsed.customServerUrl || 'http://localhost:3001';
+        return parsed.customServerUrl || 'http://localhost:8787';
       }
     }
-    return import.meta.env.VITE_SERVER_URL || 'http://localhost:3001';
+    return import.meta.env.VITE_SERVER_URL || 'http://localhost:8787';
   };
 
   const SOCKET_URL = getServerUrl();
@@ -195,8 +219,8 @@ export const useGameService = (
   });
 
   const stateRef = useRef<GameState>(state);
-  const [socket, setSocket] = useState<any>(null);
-  const socketRef = useRef<Socket | null>(null);
+  const socketRef = useRef<RealtimeClient | null>(null);
+  const hostListenersAttachedRef = useRef(false);
   const timerRef = useRef<number | null>(null);
   const speechDedupRef = useRef<Record<string, number>>({});
   const lastSyncRef = useRef<number>(0);
@@ -234,7 +258,7 @@ export const useGameService = (
   const progressionManager = useRef<ProgressionManager | null>(null);
 
   const stopSpeech = () => {
-    window.speechSynthesis.cancel();
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
     if (activeAudioRef.current) {
       activeAudioRef.current.pause();
       activeAudioRef.current = null;
@@ -588,85 +612,148 @@ export const useGameService = (
 
   useEffect(() => {
     import.meta.env.DEV && console.log('[GameService] Initializing socket to:', SOCKET_URL);
-    const socket = io(SOCKET_URL, {
-      transports: ['websocket', 'polling'], // Allow fallback to polling
-      timeout: 10000,
-      reconnectionAttempts: 5
-    });
+    const client = new RealtimeClient();
 
-    socket.on('connect', () => {
-      import.meta.env.DEV && console.log('[GameService] Socket connected successfully!');
-    });
+    const setupHostListeners = () => {
+      if (hostListenersAttachedRef.current) return;
+      hostListenersAttachedRef.current = true;
+      client.on('playerEvent', (event) => {
+        processHostEvent(event as GameEvent);
+      });
+    };
 
-    socket.on('connect_error', (err) => {
-      console.error('[GameService] Socket connection error:', err.message, err.stack);
-    });
-
-    socketRef.current = socket;
-    setSocket(socket);
-
-    if (role === 'HOST') {
-      const setupHostListeners = () => {
-        socket.on('playerEvent', (event: GameEvent) => {
-          processHostEvent(event);
-        });
+    const applyReclaimedHost = (roomCode: string, recovered: unknown) => {
+      isHostRef.current = true;
+      const updatedState: GameState = {
+        ...normalizeState(recovered),
+        hostId: playerId,
+        // Device preferences are not stored by the server.
+        usePremiumVoices: stateRef.current.usePremiumVoices,
       };
+      if (updatedState.players[playerId]) updatedState.vipId = playerId;
+      stateRef.current = updatedState;
+      setState(updatedState);
+      setupHostListeners();
+      // Sync hostId/vipId and any recovered progression to everyone.
+      client.emit('gameStateUpdate', { roomCode, gameState: updatedState });
+      resumeGameProgression(updatedState);
+    };
 
-      if (targetRoomCode) {
-        // Rejoin existing room
-        import.meta.env.DEV && console.log('[GameService] Rejoining existing room as host:', targetRoomCode);
-        socket.emit('joinRoom', { roomCode: targetRoomCode, role: 'HOST', id: playerId }, (response: any) => {
-          if (response.success) {
-            // Re-apply host-local settings (usePremiumVoices) onto the server-recovered
-            // state. The server only stores game progress, not device preferences — so
-            // without this the setting silently reverts to the default on every rejoin.
-            const restoredState: GameState = {
-              ...response.state,
-              usePremiumVoices: stateRef.current.usePremiumVoices,
-            };
-            stateRef.current = restoredState;
-            setState(restoredState);
-            isHostRef.current = true;
-            setupHostListeners();
-            // Broadcast the corrected state so clients get the right setting immediately
-            socket.emit('gameStateUpdate', { roomCode: targetRoomCode, gameState: restoredState });
-            // Resume mid-game logic if any
-            resumeGameProgression(restoredState);
-          } else {
-            console.error('[GameService] Failed to rejoin room:', response.error);
-            // Fallback to create if rejoin fails? Maybe better to error out.
+    const joinHostRoom = (roomCode: string) => {
+      import.meta.env.DEV && console.log('[GameService] Joining room as host:', roomCode);
+      client.emit('joinRoom', { roomCode, role: 'HOST', id: playerId }, (response: any) => {
+        if (!response?.success) {
+          console.error('[GameService] Failed to rejoin room:', response?.error);
+          if (response?.error === 'Room not found') {
+            localStorage.removeItem('bamboozle_room_code');
+            setHostDisconnected(false);
+            setRoomClosed(true);
           }
-        });
-      } else {
-        // Create a new room
-        import.meta.env.DEV && console.log('[GameService] Emitting createRoom for host:', playerId);
-        socket.emit('createRoom', { hostId: playerId }, (roomCode: string) => {
-          if (!roomCode) {
-            console.error('[GameService] Server failed to return a roomCode!');
-            return;
-          }
-          import.meta.env.DEV && console.log('[GameService] Room created successfully:', roomCode);
-          localStorage.setItem('bamboozle_room_code', roomCode); // Save for rejoin
-          setState(prev => {
-            const next = { ...prev, roomCode };
-            socket.emit('gameStateUpdate', { roomCode, gameState: next });
-            return next;
-          });
-        });
-        setupHostListeners();
+          return;
+        }
+
+        const recovered: GameState = {
+          ...normalizeState(response.state),
+          usePremiumVoices: stateRef.current.usePremiumVoices,
+        };
+        if (response.becameHost) {
+          applyReclaimedHost(roomCode, recovered);
+        } else {
+          stateRef.current = recovered;
+          setState(recovered);
+          isHostRef.current = true;
+          setupHostListeners();
+          client.emit('gameStateUpdate', { roomCode, gameState: recovered });
+          resumeGameProgression(recovered);
+        }
+      });
+    };
+
+    const createHostRoom = () => {
+      import.meta.env.DEV && console.log('[GameService] Creating room for host:', playerId);
+      client.emit('createRoom', { hostId: playerId }, (roomCode: any) => {
+        if (typeof roomCode !== 'string' || !roomCode) {
+          console.error('[GameService] Server failed to return a roomCode!', roomCode);
+          return;
+        }
+        import.meta.env.DEV && console.log('[GameService] Room created successfully:', roomCode);
+        localStorage.setItem('bamboozle_room_code', roomCode);
+        const next = { ...stateRef.current, roomCode };
+        stateRef.current = next;
+        setState(next);
+        client.emit('gameStateUpdate', { roomCode, gameState: next });
+      });
+    };
+
+    const adoptOrCreateHostRoom = () => {
+      // If a createRoom ack was lost with the connection, adopt the room that
+      // did get created instead of leaking a second room.
+      client.emit('getRoomsByHost', { hostId: playerId }, (rooms: any) => {
+        if (!Array.isArray(rooms)) return;
+        const newest = [...rooms]
+          .filter((room) => room && typeof room.roomCode === 'string')
+          .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))
+          .pop();
+        if (newest) joinHostRoom(newest.roomCode);
+        else createHostRoom();
+      });
+    };
+
+    const onConnect = () => {
+      import.meta.env.DEV && console.log('[GameService] Socket connected successfully!');
+
+      if (role === 'HOST') {
+        const knownRoom = stateRef.current.roomCode || targetRoomCode || '';
+        if (knownRoom) joinHostRoom(knownRoom);
+        else adoptOrCreateHostRoom();
+        return;
       }
-    }
+
+      // Players/audience: a fresh page has no room yet. After a transport
+      // reconnect, re-join the room we were already in.
+      const roomCode = stateRef.current.roomCode;
+      if (!roomCode) return;
+      client.emit('joinRoom', { roomCode, id: playerId }, (response: any) => {
+        if (!response?.success) {
+          console.error('[GameService] Failed to rejoin room:', response?.error);
+          if (response?.error === 'Room not found') {
+            localStorage.removeItem('bamboozle_room_code');
+            setRoomClosed(true);
+          }
+          return;
+        }
+        if (response.becameHost) {
+          applyReclaimedHost(roomCode, response.state);
+          return;
+        }
+        const recovered = normalizeState(response.state);
+        stateRef.current = recovered;
+        setState(recovered);
+      });
+    };
+
+    client.on('connect', onConnect);
+
+    client.on('connect_error', (err) => {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error('[GameService] Socket connection error:', message);
+    });
+
+    if (role === 'HOST') setupHostListeners();
+
+    socketRef.current = client;
+    client.connect(SOCKET_URL);
 
     // Listen for game state updates
-    socket.on('gameStateUpdate', (gameState: GameState) => {
+    client.on('gameStateUpdate', (gameState: GameState) => {
       // Only non-hosts should accept state updates from server
       if (!isHostRef.current) {
-        setState(gameState);
+        setState(normalizeState(gameState));
       }
     });
 
     // Listen for Host Events (Narration)
-    socket.on('hostEvent', (event: GameEvent) => {
+    client.on('hostEvent', (event: GameEvent) => {
       if (event.type === 'PLAY_NARRATION') {
         const { text, key, requestId } = event.payload;
 
@@ -684,14 +771,14 @@ export const useGameService = (
     });
 
     // Room is closing (host didn't reconnect in time)
-    socket.on('roomClosed', () => {
+    client.on('roomClosed', () => {
       localStorage.removeItem('bamboozle_room_code'); // Clear session
       setHostDisconnected(false);
       setRoomClosed(true);
     });
 
     // Host disconnected - show overlay while waiting for reconnection
-    socket.on('hostDisconnected', () => {
+    client.on('hostDisconnected', () => {
       import.meta.env.DEV && console.log('Host disconnected. Waiting for reconnection...');
       if (!isHostRef.current) {
         setHostDisconnected(true);
@@ -699,13 +786,13 @@ export const useGameService = (
     });
 
     // Host reconnected - hide overlay
-    socket.on('hostReconnected', () => {
+    client.on('hostReconnected', () => {
       import.meta.env.DEV && console.log('Host reconnected!');
       setHostDisconnected(false);
     });
 
     // Player was kicked after 60s disconnect timeout
-    socket.on('playerKicked', ({ playerId }: { playerId: string }) => {
+    client.on('playerKicked', ({ playerId }: { playerId: string }) => {
       import.meta.env.DEV && console.log(`Player ${playerId} was kicked due to disconnect timeout`);
       // If we're the host, remove the player from state
       if (isHostRef.current) {
@@ -716,7 +803,7 @@ export const useGameService = (
 
 
     // LISTEN FOR SERVER AUDIO BROADCASTS
-    socket.on('playAudio', ({ text, audioUrl, requestId, isHit }: { text: string, audioUrl: string, requestId: string, isHit: boolean }) => {
+    client.on('playAudio', ({ text, audioUrl, requestId, isHit }: { text: string, audioUrl: string, requestId: string, isHit: boolean }) => {
       import.meta.env.DEV && console.log(`%c[Audio] Received broadcast %c${isHit ? '(CACHE HIT)' : '(NEW)'}: %c${text}`, 'color: #8b5cf6; font-weight: bold', isHit ? 'color: #10b981; font-weight: bold' : 'color: #f59e0b; font-weight: bold', 'color: #fff');
 
       // Prevent double-speaking if Host also gets this event
@@ -744,7 +831,8 @@ export const useGameService = (
     });
 
     return () => {
-      socket.disconnect();
+      hostListenersAttachedRef.current = false;
+      client.disconnect();
       if (timerRef.current) clearInterval(timerRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1847,8 +1935,9 @@ export const useGameService = (
     socketRef.current?.emit('joinRoom', { roomCode, id: playerId }, (response: any) => {
       if (response.success) {
         // Update both stateRef and setState to ensure everything is in sync
-        stateRef.current = response.state;
-        setState(response.state);
+        const recovered = normalizeState(response.state);
+        stateRef.current = recovered;
+        setState(recovered);
 
         // If we reclaimed host status, set up host listeners and broadcast function
         if (response.becameHost) {
@@ -1857,13 +1946,16 @@ export const useGameService = (
           // Mark this client as now being the host
           isHostRef.current = true;
 
-          // Set up playerEvent listener for incoming player actions
-          socketRef.current?.on('playerEvent', (event: GameEvent) => {
-            processHostEvent(event);
-          });
+          // Set up playerEvent listener for incoming player actions (once per client)
+          if (!hostListenersAttachedRef.current) {
+            hostListenersAttachedRef.current = true;
+            socketRef.current?.on('playerEvent', (event) => {
+              processHostEvent(event as GameEvent);
+            });
+          }
 
           // Ensure host is VIP and hostId is correct
-          const updatedState = { ...response.state };
+          const updatedState = { ...normalizeState(response.state) };
           updatedState.hostId = playerId; // Reassign hostId to the reclaiming client
           if (updatedState.players[playerId]) {
             updatedState.vipId = playerId;
@@ -1935,7 +2027,7 @@ export const useGameService = (
     lastSyncRef.current = now;
     socketRef.current?.emit('requestState', { roomCode: state.roomCode }, (remoteState: GameState | null) => {
       if (remoteState) {
-        setState(remoteState);
+        setState(normalizeState(remoteState));
         if (callback) callback(true);
       } else {
         if (callback) callback(false);

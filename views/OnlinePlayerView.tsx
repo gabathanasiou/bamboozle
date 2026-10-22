@@ -476,7 +476,7 @@ export const OnlinePlayerView: React.FC<OnlinePlayerViewProps> = ({ state, actio
                             {me && (
                                 <div className="w-full flex flex-col gap-3 md:gap-4 mt-6 md:mt-0 pb-safe-bottom md:pb-0">
                                     <button
-                                        onClick={actions.sendToggleReady}
+                                        onClick={() => { actions.unlockAudio(); actions.sendToggleReady(); }}
                                         className={`w-full py-4 rounded-xl font-black text-lg shadow-xl uppercase transition-all duration-150 active:scale-95 ${me?.isReady ? 'bg-gray-600 hover:bg-gray-500 text-gray-300' : 'bg-green-500 hover:bg-green-400 text-white'}`}
                                     >
                                         {me?.isReady ? getText(state.language, 'LOBBY_IS_READY') : getText(state.language, 'LOBBY_READY_UP')}

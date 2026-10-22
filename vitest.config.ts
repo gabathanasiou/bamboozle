@@ -13,6 +13,9 @@ export default defineConfig({
       'workers/**/*.test.ts',
       'i18n/**/*.test.ts',
     ],
+    // Worker tests need workerd + @cloudflare/vitest-plugin, not node.
+    // Run them with `npm run test:worker`.
+    exclude: ['**/node_modules/**', 'workers/**'],
     environment: 'node',
     coverage: {
       provider: 'v8',
