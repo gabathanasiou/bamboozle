@@ -56,6 +56,11 @@ npx wrangler kv namespace create TTS_KV
 npx wrangler deploy
 node -e "const fs=require('fs');process.stdout.write(JSON.stringify(JSON.parse(fs.readFileSync('../../google-credentials.json','utf8'))))" \
   | npx wrangler secret put GOOGLE_APPLICATION_CREDENTIALS_JSON
+
+# Optional ops-only TTS API. Without this secret POST /api/tts returns 404.
+# Generate a long random value and keep it out of git:
+node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))" \
+  | npx wrangler secret put TTS_API_TOKEN
 ```
 
 `wrangler.toml` already declares:
@@ -65,6 +70,10 @@ node -e "const fs=require('fs');process.stdout.write(JSON.stringify(JSON.parse(f
 - `GCS_BUCKET_NAME = "bamboozle-audio-assets"`
 - `ALLOWED_ORIGINS`: Netlify production, deploy-preview pattern, localhost, Capacitor
 - `HOST_GRACE_MS`, `PLAYER_KICK_MS`, `EMPTY_ROOM_MS` (default 60000; e2e overrides to 8000)
+- `TTS_API_DAILY_CHARS = "50000"`, `TTS_API_IP_DAILY_CHARS = "5000"` (API budget;
+  cache hits are free)
+- `MAX_SOCKETS_PER_IP`, `MAX_SOCKETS_TOTAL`, `MAX_TOTAL_ROOMS`,
+  `MAX_PLAYERS_PER_ROOM`, `MAX_AUDIENCE_PER_ROOM`, `MAX_STATE_BYTES` (abuse caps)
 
 ## Netlify
 
@@ -94,6 +103,33 @@ CORS/WS origins are never `*` in production. Add a custom domain to
 3. Never commit `google-credentials.json`; production uses `wrangler secret`.
 4. GCS object names stay `md5(text + "-" + language).mp3`. Changing the hash orphans
    the existing 3,159 lines and re-bills every phrase.
+
+### Cost guardrails (required once)
+
+The Worker limits the ops API to 50k characters/day (5k/IP/day) and the room path
+only synthesizes host narration, but the project-level quota and budget are the
+last line of defence:
+
+1. **Hard TTS quota** — Console → APIs & Services → Cloud Text-to-Speech API →
+   Quotas → set the characters/requests-per-minute limits to a value that matches
+   normal play (for example 1,000 characters/minute per project). A per-minute
+   quota caps a runaway loop even if the application limits are bypassed.
+2. **Budget + alert** — Billing → Budgets & alerts → create a budget for the
+   project with 50/80/100% thresholds and an email/Pub/Sub notification. Example:
+
+   ```bash
+   gcloud billing budgets create \
+     --billing-account=BILLING_ACCOUNT_ID \
+     --display-name="Bamboozle TTS" \
+     --budget-amount=5GBP \
+     --filter-projects=projects/PROJECT_ID \
+     --threshold-rule=percent=0.5 \
+     --threshold-rule=percent=0.8 \
+     --threshold-rule=percent=1.0
+   ```
+
+3. Record the project, quota and budget ids here when set: `PROJECT_ID=`,
+   `BILLING_ACCOUNT_ID=`, `BUDGET_ID=`.
 
 ## Rollout / rollback
 

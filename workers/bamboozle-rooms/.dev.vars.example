@@ -1,3 +1,9 @@
 # Copy to .dev.vars for local wrangler dev (never commit .dev.vars).
 # Keep the JSON on one line.
 GOOGLE_APPLICATION_CREDENTIALS_JSON={"type":"service_account","project_id":"...","private_key_id":"...","private_key":"-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n","client_email":"...@....iam.gserviceaccount.com","client_id":"...","token_uri":"https://oauth2.googleapis.com/token"}
+
+# Ops-only POST /api/tts fallback. Empty/absent disables the route (404).
+# Set a long random value here and with `wrangler secret put TTS_API_TOKEN`.
+TTS_API_TOKEN=
+TTS_API_DAILY_CHARS=50000
+TTS_API_IP_DAILY_CHARS=5000

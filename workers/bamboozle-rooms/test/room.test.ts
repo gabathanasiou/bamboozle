@@ -173,6 +173,26 @@ describe('BambooRoom', () => {
     expect(audienceVote.status).toBe(200);
   });
 
+  it('enforces server-side player and audience caps', async () => {
+    await join('p1', 's1');
+    await join('p2', 's2');
+    expect((await joinStatus('p3', 's3')).status).toBe(409);
+
+    await join('a1', 'sa1', 'AUDIENCE');
+    await join('a2', 'sa2', 'AUDIENCE');
+    expect((await joinStatus('a3', 'sa3', 'AUDIENCE')).status).toBe(409);
+    expect((await joinStatus('a1', 'sa1', 'PLAYER')).status).toBe(409);
+  });
+
+  it('rejects an oversized game state', async () => {
+    const response = await call('/internal/state-update', {
+      playerId: HOST,
+      socketId: HOST_SOCKET,
+      gameState: { roomCode: ROOM, phase: 'LOBBY', players: {}, blob: 'x'.repeat(2000) },
+    });
+    expect(response.status).toBe(413);
+  });
+
   it('refuses player events from sockets that never joined', async () => {
     const response = await call('/internal/player-event', {
       senderId: 'ghost',

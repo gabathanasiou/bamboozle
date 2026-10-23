@@ -1,7 +1,15 @@
 import type { Env } from './env';
+import {
+  maxSocketsPerIp,
+  maxSocketsTotal,
+  maxTotalRooms,
+  ttsApiDailyChars,
+  ttsApiIpDailyChars,
+} from './env';
 import { authorizeHost } from './auth';
 import {
   MAX_CONCURRENT_ROOMS_PER_HOST,
+  MAX_FRAME_BYTES,
   RATE_LIMITED_EVENTS,
   READ_EVENTS,
   consumeRate,
@@ -22,6 +30,8 @@ import {
 } from './protocol';
 
 const SIX_HOURS = 6 * 60 * 60 * 1000;
+const CREATE_WINDOW = 60 * 60 * 1000;
+const MAX_CREATES_PER_WINDOW = 10;
 
 interface RoomRow {
   [key: string]: string | number | null;
@@ -66,6 +76,7 @@ export class Directory {
   private readonly ctx: DurableObjectState;
   private readonly env: Env;
   private ipRates = new Map<string, RateState>();
+  private createRates = new Map<string, RateState>();
 
   constructor(ctx: DurableObjectState, env: Env) {
     this.ctx = ctx;
@@ -86,6 +97,12 @@ export class Directory {
       );
       CREATE INDEX IF NOT EXISTS rooms_by_host ON rooms(host_id);
       CREATE INDEX IF NOT EXISTS rooms_by_created ON rooms(created_at);
+
+      CREATE TABLE IF NOT EXISTS tts_budget (
+        key TEXT PRIMARY KEY,
+        day TEXT NOT NULL,
+        count INTEGER NOT NULL DEFAULT 0
+      );
     `);
     // Existing deployments predate the host-secret column.
     try {
@@ -98,11 +115,15 @@ export class Directory {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     try {
-      if (url.pathname === '/ws') return this.handleWebSocket(request);
+      if (url.pathname === '/ws') {
+        void this.scheduleSweep();
+        return this.handleWebSocket(request);
+      }
       if (url.pathname === '/internal/broadcast') return await this.internalBroadcast(request);
       if (url.pathname === '/internal/room-closed') return await this.internalRoomClosed(request);
       if (url.pathname === '/internal/room-meta') return await this.internalRoomMeta(request);
       if (url.pathname === '/internal/demote') return await this.internalDemote(request);
+      if (url.pathname === '/internal/tts-budget') return await this.internalTtsBudget(request);
       return json({ error: 'NOT_FOUND' }, 404);
     } catch (error) {
       console.error('[Directory] internal error', error);
@@ -119,6 +140,25 @@ export class Directory {
       return new Response('Expected WebSocket upgrade', { status: 426 });
     }
 
+    const clientIp = (request.headers.get('cf-connecting-ip') ||
+      request.headers.get('x-real-ip') ||
+      request.headers.get('x-forwarded-for') ||
+      '')
+      .split(',')[0]
+      .trim()
+      .slice(0, 64);
+
+    const sockets = this.ctx.getWebSockets();
+    if (sockets.length >= maxSocketsTotal(this.env)) {
+      return new Response('Too many connections', { status: 429 });
+    }
+    if (clientIp) {
+      const fromIp = sockets.filter((socket) => this.attachment(socket)?.clientIp === clientIp).length;
+      if (fromIp >= maxSocketsPerIp(this.env)) {
+        return new Response('Too many connections from this address', { status: 429 });
+      }
+    }
+
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
     this.ctx.acceptWebSocket(server);
@@ -129,14 +169,7 @@ export class Directory {
       role: null,
       isHost: false,
       rate: { count: 0, windowStart: Date.now() },
-      clientIp:
-        (request.headers.get('cf-connecting-ip') ||
-          request.headers.get('x-real-ip') ||
-          request.headers.get('x-forwarded-for') ||
-          '')
-          .split(',')[0]
-          .trim()
-          .slice(0, 64),
+      clientIp,
     };
     server.serializeAttachment(attachment);
     return new Response(null, { status: 101, webSocket: client });
@@ -232,6 +265,10 @@ export class Directory {
           ack({ error: auth.reason || 'ENTITLEMENT_REQUIRED' });
           return;
         }
+        if (!this.consumeCreate(attachment.clientIp || 'unknown')) {
+          ack({ error: 'RATE_LIMITED' });
+          return;
+        }
 
         try {
           const created = await this.createRoomForHost(
@@ -247,7 +284,12 @@ export class Directory {
           ack(created);
         } catch (error) {
           const reason = error instanceof Error ? error.message : 'ROOM_CREATE_FAILED';
-          if (reason === 'ROOM_LIMIT' || reason === 'INVALID_HOST_ID' || reason === 'HOST_SECRET_REQUIRED') {
+          if (
+            reason === 'ROOM_LIMIT' ||
+            reason === 'ROOM_LIMIT_GLOBAL' ||
+            reason === 'INVALID_HOST_ID' ||
+            reason === 'HOST_SECRET_REQUIRED'
+          ) {
             ack({ error: reason });
           } else {
             throw error;
@@ -416,6 +458,13 @@ export class Directory {
     if (!hostId) throw new Error('INVALID_HOST_ID');
 
     await this.sweepStaleRooms();
+    await this.scheduleSweep();
+
+    const totalRooms =
+      this.ctx.storage.sql
+        .exec<{ count: number }>('SELECT COUNT(*) AS count FROM rooms')
+        .toArray()[0]?.count ?? 0;
+    if (totalRooms >= maxTotalRooms(this.env)) throw new Error('ROOM_LIMIT_GLOBAL');
 
     let rows = this.rowsForHost(hostId);
     let hostSecret = normalizeHostSecret(suppliedSecret);
@@ -587,6 +636,40 @@ export class Directory {
     }
   }
 
+  /** Keep one sweep alarm regardless of how many creates happen. */
+  private async scheduleSweep(): Promise<void> {
+    try {
+      if ((await this.ctx.storage.getAlarm()) === null) {
+        await this.ctx.storage.setAlarm(Date.now() + SIX_HOURS);
+      }
+    } catch (error) {
+      console.warn('[Directory] could not schedule sweep alarm', error);
+    }
+  }
+
+  async alarm(): Promise<void> {
+    await this.sweepStaleRooms();
+    await this.scheduleSweep();
+  }
+
+  private consumeCreate(ip: string): boolean {
+    const now = Date.now();
+    const result = consumeRate(
+      this.createRates.get(ip) ?? { count: 0, windowStart: now },
+      now,
+      MAX_CREATES_PER_WINDOW,
+      CREATE_WINDOW,
+    );
+    this.createRates.set(ip, result.next);
+    if (this.createRates.size > 5000) {
+      const cutoff = now - CREATE_WINDOW * 2;
+      for (const [key, state] of this.createRates) {
+        if (state.windowStart < cutoff) this.createRates.delete(key);
+      }
+    }
+    return !result.limited;
+  }
+
   private async roomFetch(
     code: string,
     path: string,
@@ -621,6 +704,10 @@ export class Directory {
     const onlySocketId = sanitize(body.onlySocketId, 128);
     const excludeSocketId = sanitize(body.excludeSocketId, 128);
     const frame = JSON.stringify(data === undefined ? { event } : { event, data });
+    if (new TextEncoder().encode(frame).byteLength > MAX_FRAME_BYTES) {
+      console.warn('[Directory] dropped oversized broadcast', event, roomCode);
+      return json({ error: 'FRAME_TOO_LARGE' }, 413);
+    }
 
     for (const socket of this.ctx.getWebSockets()) {
       const attachment = this.attachment(socket);
@@ -668,6 +755,69 @@ export class Directory {
     }
     this.updateRow(roomCode, fields);
     return json({ ok: true });
+  }
+
+  private async internalTtsBudget(request: Request): Promise<Response> {
+    const body = await readJson(request);
+    const ip = sanitize(body.ip, 64) || 'unknown';
+    const chars = Math.floor(Number(body.chars));
+    if (!Number.isFinite(chars) || chars <= 0) {
+      return json({ error: 'INVALID_CHARS' }, 400);
+    }
+
+    const day = new Date().toISOString().slice(0, 10);
+    const globalKey = 'global';
+    const ipKey = `ip:${ip}`;
+    const globalCount = this.budgetCount(globalKey, day);
+    const ipCount = this.budgetCount(ipKey, day);
+    const globalLimit = ttsApiDailyChars(this.env);
+    const ipLimit = ttsApiIpDailyChars(this.env);
+
+    if (globalCount + chars > globalLimit || ipCount + chars > ipLimit) {
+      return json(
+        {
+          allowed: false,
+          error: 'TTS_BUDGET_EXCEEDED',
+          global: globalCount,
+          ip: ipCount,
+          globalLimit,
+          ipLimit,
+        },
+        429,
+      );
+    }
+
+    this.budgetAdd(globalKey, day, globalCount + chars);
+    this.budgetAdd(ipKey, day, ipCount + chars);
+    return json({
+      allowed: true,
+      global: globalCount + chars,
+      ip: ipCount + chars,
+      globalLimit,
+      ipLimit,
+    });
+  }
+
+  private budgetCount(key: string, day: string): number {
+    const row = this.ctx.storage.sql
+      .exec<{ day: string; count: number }>('SELECT day, count FROM tts_budget WHERE key = ?', key)
+      .toArray()[0];
+    if (!row) return 0;
+    if (row.day !== day) {
+      this.ctx.storage.sql.exec('DELETE FROM tts_budget WHERE key = ?', key);
+      return 0;
+    }
+    return row.count;
+  }
+
+  private budgetAdd(key: string, day: string, count: number): void {
+    this.ctx.storage.sql.exec(
+      `INSERT INTO tts_budget (key, day, count) VALUES (?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET day = excluded.day, count = excluded.count`,
+      key,
+      day,
+      count,
+    );
   }
 
   private async internalDemote(request: Request): Promise<Response> {

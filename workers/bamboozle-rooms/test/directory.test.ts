@@ -33,6 +33,14 @@ async function updateRoomState(code: string, gameState: Record<string, unknown>)
   expect(response.status).toBe(200);
 }
 
+async function ttsBudget(ip: string, chars: number): Promise<Response> {
+  return directory().fetch('https://directory/internal/tts-budget', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ ip, chars }),
+  });
+}
+
 describe('Directory', () => {
   beforeEach(async () => {
     await runInDurableObject(directory(), async (instance: Directory, state) => {
@@ -146,5 +154,34 @@ describe('Directory', () => {
     await create();
     const rows = await roomRows();
     expect(rows.map((row) => row.code)).not.toContain('YYYY');
+  });
+
+  it('sweeps stale rooms when the alarm handler runs', async () => {
+    await runInDurableObject(directory(), async (instance: Directory, state) => {
+      state.storage.sql.exec(
+        `INSERT INTO rooms (code, host_id, created_at, phase, player_count, pending_host_reconnect)
+         VALUES ('XXXX', ?, ?, 'LOBBY', 0, 0)`,
+        'other-host',
+        Date.now() - 7 * 60 * 60 * 1000,
+      );
+      await instance.alarm();
+    });
+
+    expect((await roomRows()).map((row) => row.code)).not.toContain('XXXX');
+  });
+
+  it('enforces global and per-IP TTS character budgets', async () => {
+    const first = await ttsBudget('1.1.1.1', 50);
+    expect(first.status).toBe(200);
+
+    const overIp = await ttsBudget('1.1.1.1', 20);
+    expect(overIp.status).toBe(429);
+    expect(await overIp.json()).toMatchObject({ error: 'TTS_BUDGET_EXCEEDED' });
+
+    const second = await ttsBudget('2.2.2.2', 50);
+    expect(second.status).toBe(200);
+
+    const overGlobal = await ttsBudget('2.2.2.2', 1);
+    expect(overGlobal.status).toBe(429);
   });
 });

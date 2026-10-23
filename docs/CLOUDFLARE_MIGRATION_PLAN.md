@@ -23,7 +23,7 @@ Netlify (static React) / Capacitor Android
 Cloudflare Worker  "bamboozle-rooms"        ← NEW, separate from lemon-rooms
   ├── GET  /health
   ├── GET  /api/version
-  ├── POST /api/tts                         ← Google TTS → GCS (existing bucket)
+  ├── POST /api/tts (ops-only; 404 unless TTS_API_TOKEN is set) ← Google TTS → GCS (existing bucket)
   └── GET  /ws                              ← upgrades to the room DO
           │
           ├── BambooRoom DO   (one per room)  state, players, relay, alarms
@@ -39,7 +39,7 @@ workers/bamboozle-rooms/
   wrangler.toml
   package.json
   tsconfig.json
-  src/index.ts          Worker router + CORS + /api/tts
+  src/index.ts          Worker router + CORS + ops-only /api/tts (token-gated)
   src/room.ts           BambooRoom DO
   src/directory.ts      Directory DO
   src/tts.ts            Google TTS + GCS REST client

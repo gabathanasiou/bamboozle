@@ -1,5 +1,5 @@
 import type { Env } from './env';
-import { emptyRoomMs, playerKickMs, roomGraceMs } from './env';
+import { emptyRoomMs, maxAudiencePerRoom, maxPlayersPerRoom, maxStateBytes, playerKickMs, roomGraceMs } from './env';
 import {
   MAX_NAME_LENGTH,
   MAX_TTS_LENGTH,
@@ -299,6 +299,30 @@ export class BambooRoom {
       : requestedRole === 'AUDIENCE'
         ? 'AUDIENCE'
         : 'PLAYER';
+
+    const existing = this.ctx.storage.sql
+      .exec<PlayerRow>('SELECT id, name, role, connected FROM players WHERE id = ?', playerId)
+      .toArray()[0];
+    if (!existing || existing.role !== role) {
+      if (role === 'AUDIENCE') {
+        const audienceCount =
+          this.ctx.storage.sql
+            .exec<{ count: number }>("SELECT COUNT(*) AS count FROM players WHERE role = 'AUDIENCE'")
+            .toArray()[0]?.count ?? 0;
+        if (audienceCount >= maxAudiencePerRoom(this.env)) {
+          return json({ error: 'ROOM_FULL' }, 409);
+        }
+      } else {
+        const playerCount =
+          this.ctx.storage.sql
+            .exec<{ count: number }>("SELECT COUNT(*) AS count FROM players WHERE role <> 'AUDIENCE'")
+            .toArray()[0]?.count ?? 0;
+        if (playerCount >= maxPlayersPerRoom(this.env) + 1) {
+          return json({ error: 'ROOM_FULL' }, 409);
+        }
+      }
+    }
+
     const now = Date.now();
     this.ctx.storage.sql.exec(
       `INSERT INTO players (id, name, role, connected, last_seen)
@@ -356,6 +380,10 @@ export class BambooRoom {
     if (!isObject(gameState)) return json({ error: 'INVALID_STATE' }, 400);
 
     const publicState = this.publicState(gameState)!;
+    const serialized = JSON.stringify(publicState);
+    if (new TextEncoder().encode(serialized).byteLength > maxStateBytes(this.env)) {
+      return json({ error: 'STATE_TOO_LARGE' }, 413);
+    }
     this.latestState = publicState;
     this.persistState(publicState, false);
     await this.broadcast('gameStateUpdate', publicState, {
@@ -396,6 +424,24 @@ export class BambooRoom {
     }
 
     if (eventType === 'JOIN_ROOM' || eventType === 'JOIN_AUDIENCE') {
+      if (eventType === 'JOIN_ROOM' && sender.role === 'AUDIENCE') {
+        const playerCount =
+          this.ctx.storage.sql
+            .exec<{ count: number }>("SELECT COUNT(*) AS count FROM players WHERE role <> 'AUDIENCE'")
+            .toArray()[0]?.count ?? 0;
+        if (playerCount >= maxPlayersPerRoom(this.env) + 1) {
+          return json({ error: 'ROOM_FULL' }, 409);
+        }
+      }
+      if (eventType === 'JOIN_AUDIENCE' && sender.role !== 'AUDIENCE') {
+        const audienceCount =
+          this.ctx.storage.sql
+            .exec<{ count: number }>("SELECT COUNT(*) AS count FROM players WHERE role = 'AUDIENCE'")
+            .toArray()[0]?.count ?? 0;
+        if (audienceCount >= maxAudiencePerRoom(this.env)) {
+          return json({ error: 'ROOM_FULL' }, 409);
+        }
+      }
       this.ctx.storage.sql.exec(
         'UPDATE players SET role = ? WHERE id = ?',
         eventType === 'JOIN_AUDIENCE' ? 'AUDIENCE' : 'PLAYER',

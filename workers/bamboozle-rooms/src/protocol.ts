@@ -145,12 +145,17 @@ export const RATE_LIMITED_EVENTS = new Set([
 /** Read-only lookups also get a per-IP budget, not just a per-socket one. */
 export const READ_EVENTS = new Set(['checkRoom', 'getRoomsByHost', 'requestState']);
 
-export function consumeRate(state: RateState, now: number): { limited: boolean; next: RateState } {
-  const fresh = now - state.windowStart > EVENT_RATE_WINDOW;
+export function consumeRate(
+  state: RateState,
+  now: number,
+  limit = MAX_EVENTS_PER_WINDOW,
+  windowMs = EVENT_RATE_WINDOW,
+): { limited: boolean; next: RateState } {
+  const fresh = now - state.windowStart > windowMs;
   const next = fresh
     ? { count: 1, windowStart: now }
     : { count: state.count + 1, windowStart: state.windowStart };
-  return { limited: next.count > MAX_EVENTS_PER_WINDOW, next };
+  return { limited: next.count > limit, next };
 }
 
 /** Same rules as server/index.js: strip HTML tags, truncate, trim. */

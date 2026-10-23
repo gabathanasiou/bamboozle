@@ -82,8 +82,15 @@ reserved keys (`__proto__`, `constructor`, `prototype`) are rejected.
   fire-and-forget events are dropped.
 - Read events also get a per-IP budget of 20 per 10s (best-effort, held in the
   Directory instance).
+- 12 WebSockets per IP and 1,000 total; 10 `createRoom` calls per IP per hour;
+  500 rooms total. Over-cap joins/creates return `ROOM_FULL`/`RATE_LIMITED`.
+- 6 players (+ host) and 20 audience members per room; a full room returns
+  `ROOM_FULL`.
+- A persisted game state above 128 KiB is rejected with `STATE_TOO_LARGE`; an
+  outgoing broadcast above 256 KiB is dropped.
 - 2 concurrent rooms per host. The 3rd moves the oldest to grace; the 4th closes
   the oldest. Both require the host secret.
+- Stale rooms are swept by a 6h Directory alarm as well as on `createRoom`.
 - Host grace, player kick and empty-room grace are 60s each (8s in the e2e harness).
 
 ## Connection lifecycle

@@ -202,6 +202,25 @@ async function main() {
     assert(received.playerId === 'smoke-player', 'playerDisconnected payload');
   });
 
+  await step('server-side player cap', async () => {
+    const capped = await Client.connect();
+    for (let i = 0; i < 5; i++) {
+      const result = await capped.ack('joinRoom', {
+        roomCode,
+        id: `smoke-extra-${i}`,
+        role: 'PLAYER',
+      });
+      assert(result.success === true, `extra player ${i} joined`);
+    }
+    const full = await capped.ack('joinRoom', {
+      roomCode,
+      id: 'smoke-extra-full',
+      role: 'PLAYER',
+    });
+    assert(full?.error === 'ROOM_FULL', `expected ROOM_FULL, got ${JSON.stringify(full)}`);
+    capped.close();
+  });
+
   await step('host reconnect grace + reclaim', async () => {
     host.close();
     const disconnected = await audience.wait('hostDisconnected');
@@ -287,6 +306,18 @@ async function main() {
     const response = await fetch(audio.audioUrl, { method: 'HEAD' });
     assert(response.ok, `audio URL ${response.status}`);
     console.log(`       ${audio.audioUrl}`);
+  });
+
+  await step('anonymous /api/tts is disabled or unauthorized', async () => {
+    const response = await fetch(`${BASE}/api/tts`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text: 'smoke tts api' }),
+    });
+    assert(
+      response.status === 404 || response.status === 401,
+      `expected 404/401, got ${response.status}`,
+    );
   });
 
   if (process.env.SMOKE_NEW_TTS === '1') {
