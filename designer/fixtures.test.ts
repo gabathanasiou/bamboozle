@@ -5,7 +5,7 @@ import { DEFAULT_CONFIG } from './types';
 import type { DesignerConfig } from './types';
 import { SCREENS, VIEW_OPTIONS, getCopy } from './catalog';
 import { buildPreviewModel } from './fixtures';
-import { encodeConfig, decodeConfig, normaliseConfig } from './bridge';
+import { breakpointForWidth, buildResizeRequest, encodeConfig, decodeConfig, getAgentBrief, normaliseConfig } from './bridge';
 
 const withConfig = (patch: Partial<DesignerConfig>): DesignerConfig => normaliseConfig({
     ...DEFAULT_CONFIG,
@@ -252,5 +252,38 @@ describe('config transport', () => {
         expect(config.game.revealOutcome).toBe('not-found');
         expect(config.game.revealVoters).toBe(0);
         expect(config.game.round).toBe(2);
+    });
+});
+
+
+describe('resize handoff', () => {
+    it('maps viewport widths to Tailwind breakpoints', () => {
+        expect(breakpointForWidth(393)).toBe('base');
+        expect(breakpointForWidth(640)).toBe('sm');
+        expect(breakpointForWidth(820)).toBe('md');
+        expect(breakpointForWidth(1024)).toBe('lg');
+        expect(breakpointForWidth(1280)).toBe('xl');
+        expect(breakpointForWidth(1536)).toBe('2xl');
+    });
+
+    it('includes box/font before-after and the active breakpoint', () => {
+        const config = withConfig({ screen: 'lobby' });
+        const change = {
+            selector: '#designer-preview-root > div > span',
+            label: 'ROOM: BAMZ',
+            classes: 'text-sm font-bold',
+            text: 'ROOM: BAMZ',
+            before: { width: 97, height: 20, fontSize: '14px', lineHeight: '20px' },
+            after: { width: 161, height: 48, fontSize: '22px', lineHeight: '20px' },
+            viewport: { width: 393, height: 852, breakpoint: 'base' as const },
+        };
+        const request = buildResizeRequest(config, [change]);
+        expect(request).toContain('base breakpoint');
+        expect(request).toContain('97×20 → 161×48');
+        expect(request).toContain('14px/20px → 22px/20px');
+        expect(request).toContain('responsive Tailwind');
+        const brief = getAgentBrief(config, null, null, [change]);
+        expect(brief).toContain('## Live resize');
+        expect(brief).toContain('97×20 → 161×48');
     });
 });

@@ -1,9 +1,11 @@
 import {
+    Breakpoint,
     DEFAULT_CONFIG,
     DesignerConfig,
     DesignerDiagnostics,
     DesignerElementInfo,
     GameView,
+    ResizeChange,
     ScreenId,
 } from './types';
 import { SCREEN_BY_ID, VIEW_BY_VALUE } from './catalog';
@@ -192,10 +194,20 @@ export const buildConfigUrl = (config: DesignerConfig): string => {
     return `${window.location.origin}${window.location.pathname}#cfg=${encodeConfig(config)}`;
 };
 
+export const breakpointForWidth = (width: number): Breakpoint => {
+    if (width >= 1536) return '2xl';
+    if (width >= 1280) return 'xl';
+    if (width >= 1024) return 'lg';
+    if (width >= 768) return 'md';
+    if (width >= 640) return 'sm';
+    return 'base';
+};
+
 export const getAgentBrief = (
     config: DesignerConfig,
     diagnostics?: DesignerDiagnostics | null,
     element?: DesignerElementInfo | null,
+    resizeChanges: ResizeChange[] = [],
 ): string => {
     const screen = SCREEN_BY_ID[config.screen];
     const view = VIEW_BY_VALUE[config.view];
@@ -204,7 +216,7 @@ export const getAgentBrief = (
         '',
         `- Screen: ${screen.label} (${screen.group})`,
         `- View: ${config.screen === 'join' ? 'Online · Join' : view.label}`,
-        `- Viewport: ${config.viewport.width}×${config.viewport.height} (${config.viewport.preset})`,
+        `- Viewport: ${config.viewport.width}×${config.viewport.height} (${config.viewport.preset}) · ${breakpointForWidth(config.viewport.width)} breakpoint`,
         `- Language: ${config.language.toUpperCase()} · Content: ${config.contentLength}`,
         `- Players: ${config.game.players} · Audience: ${config.game.audience} · Answers: ${config.game.answers}`,
         `- Voters: ${config.game.voterCount} players + ${config.game.audienceVotes} audience · Submitted: ${config.game.submitted} · Ready: ${config.game.ready} · Current vote: ${config.game.currentVote ? 'yes' : 'no'}`,
@@ -229,7 +241,58 @@ export const getAgentBrief = (
             `- Text: ${element.text || '(none)'}`,
         );
     }
+    if (resizeChanges.length) {
+        lines.push('', '## Live resize / text changes (preview only)');
+        for (const change of resizeChanges) {
+            lines.push(
+                `- \`${change.selector}\``,
+                `  - box ${change.before.width}×${change.before.height} → ${change.after.width}×${change.after.height}`,
+                `  - font ${change.before.fontSize}/${change.before.lineHeight} → ${change.after.fontSize}/${change.after.lineHeight}`,
+                `  - viewport ${change.viewport.width}×${change.viewport.height} · ${change.viewport.breakpoint} breakpoint`,
+                `  - text: ${change.text || '(none)'}`,
+            );
+        }
+        lines.push('', 'Translate these to responsive Tailwind/code at the listed breakpoint; do not hardcode the live inline pixels blindly.');
+    }
     lines.push('', `Reproduce: ${buildConfigUrl(config)}`);
+    return lines.join('\n');
+};
+
+export const buildResizeRequest = (
+    config: DesignerConfig,
+    resizeChanges: ResizeChange[],
+    diagnostics?: DesignerDiagnostics | null,
+): string => {
+    const breakpoint = breakpointForWidth(config.viewport.width);
+    const lines = [
+        '# Bamboozle resize request',
+        '',
+        `- Scene: ${config.screen} · ${config.view}`,
+        `- Viewport: ${config.viewport.width}×${config.viewport.height} · ${breakpoint} breakpoint`,
+        `- Language: ${config.language.toUpperCase()} · Content: ${config.contentLength}`,
+        '',
+        '## Live changes (preview only)',
+    ];
+    if (!resizeChanges.length) {
+        lines.push('- No live size/text changes recorded.');
+    } else {
+        for (const change of resizeChanges) {
+            lines.push(
+                `- \`${change.selector}\``,
+                `  - box ${change.before.width}×${change.before.height} → ${change.after.width}×${change.after.height}`,
+                `  - font ${change.before.fontSize}/${change.before.lineHeight} → ${change.after.fontSize}/${change.after.lineHeight}`,
+                `  - text: ${change.text || '(none)'}`,
+            );
+        }
+    }
+    if (diagnostics?.issues.length) {
+        lines.push('', '## Diagnostics', ...diagnostics.issues.map((issue) => `- [${issue.severity}] ${issue.kind}: ${issue.label} — ${issue.selector}`));
+    }
+    lines.push(
+        '',
+        `Apply the intent at the **${breakpoint}** breakpoint, using responsive Tailwind/code rather than blind inline pixels. Verify this viewport plus the adjacent breakpoints (base, md, lg).`,
+        `Reproduce: ${buildConfigUrl(config)}`,
+    );
     return lines.join('\n');
 };
 
@@ -238,6 +301,8 @@ export type ParentToPreviewMessage =
     | { type: 'designer:scan' }
     | { type: 'designer:export-png' }
     | { type: 'designer:reset-element-size' }
+    | { type: 'designer:reset-all-element-sizes' }
+    | { type: 'designer:set-selected-style'; property: 'fontSize' | 'lineHeight'; value: string }
     | { type: 'designer:reveal-element'; selector: string };
 
 export type PreviewToParentMessage =
@@ -245,7 +310,8 @@ export type PreviewToParentMessage =
     | { type: 'designer:diagnostics'; diagnostics: DesignerDiagnostics }
     | { type: 'designer:element'; element: DesignerElementInfo | null }
     | { type: 'designer:error'; message: string }
-    | { type: 'designer:export-status'; status: 'started' | 'done' | 'error'; message?: string };
+    | { type: 'designer:export-status'; status: 'started' | 'done' | 'error'; message?: string }
+    | { type: 'designer:resize-changes'; changes: ResizeChange[] };
 
 export interface DesignerBridge {
     getConfig(): DesignerConfig;
@@ -256,6 +322,10 @@ export interface DesignerBridge {
     scan(): void;
     getDiagnostics(): DesignerDiagnostics | null;
     getElement(): DesignerElementInfo | null;
+    undo(): DesignerConfig | null;
+    redo(): DesignerConfig | null;
+    getResize(): ResizeChange | null;
+    getResizeChanges(): ResizeChange[];
     getAgentBrief(): string;
     reset(): DesignerConfig;
 }

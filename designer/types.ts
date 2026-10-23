@@ -171,6 +171,29 @@ export type PreviewModel =
     | OfflinePreviewModel
     | AdminPreviewModel;
 
+export type Breakpoint = 'base' | 'sm' | 'md' | 'lg' | 'xl' | '2xl';
+
+export interface ElementSnapshot {
+    width: number;
+    height: number;
+    fontSize: string;
+    lineHeight: string;
+}
+
+export interface ResizeChange {
+    selector: string;
+    label: string;
+    classes: string;
+    text: string;
+    before: ElementSnapshot;
+    after: ElementSnapshot;
+    viewport: {
+        width: number;
+        height: number;
+        breakpoint: Breakpoint;
+    };
+}
+
 export interface DesignerElementInfo {
     selector: string;
     tag: string;

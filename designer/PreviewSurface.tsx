@@ -12,12 +12,14 @@ import { RoomManagerModal } from '../views/GameSharedComponents';
 import { sfx } from '../services/audioService';
 import { buildPreviewModel, createPreviewActions } from './fixtures';
 import { describeElement, revealElement, scanLayout } from './diagnostics';
-import { normaliseConfig } from './bridge';
+import { breakpointForWidth, normaliseConfig } from './bridge';
 import type {
     DesignerConfig,
     DesignerDiagnostics,
     DesignerElementInfo,
+    ElementSnapshot,
     PreviewModel,
+    ResizeChange,
 } from './types';
 import type { ParentToPreviewMessage, PreviewToParentMessage } from './bridge';
 
@@ -62,6 +64,8 @@ export const PreviewSurface: React.FC = () => {
     const configRef = useRef(config);
     const diagnosticsRef = useRef(diagnostics);
     const originalStylesRef = useRef<Map<string, Record<string, string>>>(new Map());
+    const resizeChangesRef = useRef<Map<string, ResizeChange>>(new Map());
+    const resizeBaselinesRef = useRef<Map<string, ElementSnapshot>>(new Map());
 
     useEffect(() => {
         configRef.current = config;
@@ -86,6 +90,65 @@ export const PreviewSurface: React.FC = () => {
         post({ type: 'designer:diagnostics', diagnostics: next });
     }, [post]);
 
+    const snapshotElement = useCallback((element: HTMLElement): ElementSnapshot => {
+        const rect = element.getBoundingClientRect();
+        const style = window.getComputedStyle(element);
+        return {
+            width: Math.round(rect.width),
+            height: Math.round(rect.height),
+            fontSize: style.fontSize,
+            lineHeight: style.lineHeight,
+        };
+    }, []);
+
+    const postResizeChanges = useCallback(() => {
+        post({ type: 'designer:resize-changes', changes: Array.from(resizeChangesRef.current.values()) });
+    }, [post]);
+
+    const recordResize = useCallback((selector: string, element: HTMLElement, before: ElementSnapshot) => {
+        const info = describeElement(element);
+        const after = snapshotElement(element);
+        if (
+            before.width === after.width
+            && before.height === after.height
+            && before.fontSize === after.fontSize
+            && before.lineHeight === after.lineHeight
+        ) {
+            return;
+        }
+        // React may remount an inner component and produce a new CSS path. Merge
+        // the change into one entry for the same logical element (text/classes).
+        let baseline = before;
+        const previous = Array.from(resizeChangesRef.current.entries()).find(([key, change]) =>
+            key !== info.selector && change.text === info.text && change.classes === info.classes);
+        if (previous) {
+            const [oldSelector, oldChange] = previous;
+            baseline = oldChange.before;
+            resizeChangesRef.current.delete(oldSelector);
+            resizeBaselinesRef.current.delete(oldSelector);
+            const original = originalStylesRef.current.get(oldSelector);
+            if (original) {
+                originalStylesRef.current.delete(oldSelector);
+                originalStylesRef.current.set(info.selector, original);
+            }
+        }
+        resizeBaselinesRef.current.set(info.selector, baseline);
+        resizeChangesRef.current.set(info.selector, {
+            selector: info.selector,
+            label: info.text || info.tag,
+            classes: info.classes,
+            text: info.text,
+            before: baseline,
+            after,
+            viewport: {
+                width: window.innerWidth,
+                height: window.innerHeight,
+                breakpoint: breakpointForWidth(window.innerWidth),
+            },
+        });
+        postResizeChanges();
+    }, [postResizeChanges, snapshotElement]);
+
     const resetSelectedSize = useCallback(() => {
         const selector = selected?.selector;
         if (!selector) return;
@@ -106,11 +169,70 @@ export const PreviewSurface: React.FC = () => {
             element.style.maxHeight = '';
             element.style.flex = '';
             element.style.boxSizing = '';
+            element.style.fontSize = '';
+            element.style.lineHeight = '';
         }
+        resizeBaselinesRef.current.delete(selector);
+        resizeChangesRef.current.delete(selector);
+        postResizeChanges();
         const info = describeElement(element);
         setSelected(info);
         post({ type: 'designer:element', element: info });
-    }, [post, selected?.selector]);
+    }, [post, postResizeChanges, selected?.selector]);
+
+    const resetAllSizes = useCallback(() => {
+        originalStylesRef.current.forEach((original, selector) => {
+            const element = document.querySelector<HTMLElement>(selector);
+            if (!element) return;
+            Object.entries(original).forEach(([key, value]) => {
+                (element.style as unknown as Record<string, string>)[key] = value;
+            });
+        });
+        originalStylesRef.current.clear();
+        resizeBaselinesRef.current.clear();
+        resizeChangesRef.current.clear();
+        postResizeChanges();
+        const selector = selected?.selector;
+        if (selector) {
+            const element = document.querySelector<HTMLElement>(selector);
+            if (element) {
+                const info = describeElement(element);
+                setSelected(info);
+                post({ type: 'designer:element', element: info });
+            }
+        }
+    }, [post, postResizeChanges, selected?.selector]);
+
+    const setSelectedStyle = useCallback((property: 'fontSize' | 'lineHeight', value: string) => {
+        const selector = selected?.selector;
+        if (!selector) return;
+        const element = document.querySelector<HTMLElement>(selector);
+        if (!element) return;
+        const before = resizeBaselinesRef.current.get(selector) ?? snapshotElement(element);
+        if (!resizeBaselinesRef.current.has(selector)) resizeBaselinesRef.current.set(selector, before);
+        if (!originalStylesRef.current.has(selector)) {
+            originalStylesRef.current.set(selector, {
+                width: element.style.width,
+                height: element.style.height,
+                minWidth: element.style.minWidth,
+                minHeight: element.style.minHeight,
+                maxWidth: element.style.maxWidth,
+                maxHeight: element.style.maxHeight,
+                flex: element.style.flex,
+                boxSizing: element.style.boxSizing,
+                fontSize: element.style.fontSize,
+                lineHeight: element.style.lineHeight,
+            });
+        }
+        if (property === 'fontSize') element.style.fontSize = value;
+        else element.style.lineHeight = value;
+        const rect = element.getBoundingClientRect();
+        setSelectionRect({ x: rect.x, y: rect.y, width: rect.width, height: rect.height });
+        recordResize(selector, element, before);
+        const info = describeElement(element);
+        setSelected(info);
+        post({ type: 'designer:element', element: info });
+    }, [post, recordResize, selected?.selector, snapshotElement]);
 
     const exportPng = useCallback(async () => {
         const root = document.getElementById(ROOT_ID);
@@ -156,6 +278,12 @@ export const PreviewSurface: React.FC = () => {
                 case 'designer:reset-element-size':
                     resetSelectedSize();
                     break;
+                case 'designer:reset-all-element-sizes':
+                    resetAllSizes();
+                    break;
+                case 'designer:set-selected-style':
+                    setSelectedStyle(message.property, message.value);
+                    break;
                 case 'designer:reveal-element':
                     revealElement(message.selector);
                     break;
@@ -165,7 +293,7 @@ export const PreviewSurface: React.FC = () => {
         };
         window.addEventListener('message', handleMessage);
         return () => window.removeEventListener('message', handleMessage);
-    }, [exportPng, post, resetSelectedSize, scan]);
+    }, [exportPng, post, resetAllSizes, resetSelectedSize, scan, setSelectedStyle]);
 
     useEffect(() => {
         post({ type: 'designer:ready' });
@@ -194,8 +322,11 @@ export const PreviewSurface: React.FC = () => {
         setSelected(null);
         setSelectionRect(null);
         originalStylesRef.current.clear();
+        resizeBaselinesRef.current.clear();
+        resizeChangesRef.current.clear();
         post({ type: 'designer:element', element: null });
-    }, [config.screen, post]);
+        post({ type: 'designer:resize-changes', changes: [] });
+    }, [config.screen, config.preview.replayKey, post]);
 
     useEffect(() => {
         if (!config.preview.resizeSelection || !selected?.selector) {
@@ -291,6 +422,8 @@ export const PreviewSurface: React.FC = () => {
         const startY = event.clientY;
         const startWidth = rect.width;
         const startHeight = rect.height;
+        const before = resizeBaselinesRef.current.get(selector) ?? snapshotElement(element);
+        if (!resizeBaselinesRef.current.has(selector)) resizeBaselinesRef.current.set(selector, before);
 
         if (!originalStylesRef.current.has(selector)) {
             originalStylesRef.current.set(selector, {
@@ -302,6 +435,8 @@ export const PreviewSurface: React.FC = () => {
                 maxHeight: element.style.maxHeight,
                 flex: element.style.flex,
                 boxSizing: element.style.boxSizing,
+                fontSize: element.style.fontSize,
+                lineHeight: element.style.lineHeight,
             });
         }
 
@@ -334,6 +469,7 @@ export const PreviewSurface: React.FC = () => {
             window.removeEventListener('pointercancel', stop);
             document.body.style.cursor = previousCursor;
             document.body.style.userSelect = previousSelect;
+            recordResize(selector, element, before);
             const info = describeElement(element);
             setSelected(info);
             post({ type: 'designer:element', element: info });

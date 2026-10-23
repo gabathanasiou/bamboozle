@@ -51,16 +51,23 @@ INTRO/REVEAL/LEADER. Host-disconnected and room-closed overlays are player-side.
 - **Viewport:** grouped Safari/Apple-style presets (iPhone, iPad, Mac, Desktop,
   Android, TV), drag handles, rotate, fit/100%, zoom. Presets use CSS viewport
   points, not panel pixels; Safari recommends a real simulator/device for exact
-  safe-area and browser-chrome behaviour.
+  safe-area and browser-chrome behaviour. The active Tailwind breakpoint
+  (base / sm / md / lg / xl / 2xl) is shown next to the scene.
 - **Motion:** the live app honours the OS `prefers-reduced-motion` setting. The
   lab’s Reduce motion toggle is on by default and can force full motion in the
   preview even when the OS prefers reduced.
 - **Inspect:** overflow/clipped-text scan, outlines, hover inspector, issue markers,
   replay, reduced motion, mute.
-- **Live element resize:** toggle **Resize selected**, pick an element with the
-  inspector, then drag the yellow handle. Changes are preview-only and reset when
-  the scene remounts; use **Reset size** or copy the dimensions into an agent brief
-  so the agent can codify them.
+- **Live element editor:** toggle **Resize selected**, pick an element, then drag
+  the yellow handle. The selected-element card also has **Font size** and
+  **Line height** inputs. Changes are preview-only and reset when the scene
+  remounts; use **Reset size**, **Reset all**, or **Copy resize request** so the
+  agent can codify them.
+- **Undo / redo:** header buttons and Cmd/Ctrl+Z / Cmd/Ctrl+Shift+Z (Ctrl+Y also
+  redoes). This covers lab configuration (screen, view, state, content, viewport),
+  not the ephemeral inline element styles; those use Reset size / Reset all.
+- **Live changes:** the Inspect panel lists every changed element with its
+  before → after box/font sizes and a one-click resize request.
 - **Share:** URL hash, copy JSON, paste JSON, copy agent brief, PNG export.
 
 ## Diagnostics
@@ -91,6 +98,10 @@ window.__bamboozleDesigner.setScene('reveal', {
 window.__bamboozleDesigner.apply({ contentLength: 'extreme', language: 'el' });
 window.__bamboozleDesigner.scan();
 window.__bamboozleDesigner.getDiagnostics();
+window.__bamboozleDesigner.undo();
+window.__bamboozleDesigner.redo();
+window.__bamboozleDesigner.getResize();
+window.__bamboozleDesigner.getResizeChanges();
 window.__bamboozleDesigner.getAgentBrief();
 ```
 
@@ -107,9 +118,33 @@ const frame = page.frameLocator('[data-testid="designer-preview"]');
 await frame.getByRole('button', { name: /submit/i }).screenshot();
 ```
 
-“Copy agent brief” emits the current screen, role, viewport, content/state,
-diagnostics, selected element, notes, and the reproducible URL. Use the notes field
-for the specific change you want.
+“Copy agent brief” emits the current screen, role, viewport/breakpoint, content/state,
+diagnostics, selected element, live resize changes, notes, and the reproducible URL.
+Use the notes field for the specific change you want.
+
+## Resize handoff
+
+After a live box/font change, **Copy resize request** emits the exact handoff:
+
+```md
+# Bamboozle resize request
+- Scene: lobby · online-player
+- Viewport: 393×852 · base breakpoint
+
+## Live changes (preview only)
+- `#designer-preview-root > …`
+  - box 97×20 → 161×48
+  - font 14px/20px → 22px/20px
+  - text: ROOM: BAMZ
+
+Apply the intent at the base breakpoint, using responsive Tailwind/code rather
+than blind inline pixels. Verify this viewport plus adjacent breakpoints.
+```
+
+The agent should reproduce the URL, read `getResizeChanges()` / `getElement()`,
+translate the intent to responsive classes, and verify the same viewport plus
+`md`/`lg`. Do not persist the lab's inline pixels as a one-off unless that
+really is the intended responsive rule.
 
 ## URL / JSON
 

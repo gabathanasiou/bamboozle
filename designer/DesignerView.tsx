@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-    Bug, Camera, ChevronLeft, Clipboard, Menu, Play, ScanLine, WandSparkles,
+    Bug, Camera, ChevronLeft, Clipboard, Menu, Play, Redo2, ScanLine, Undo2, WandSparkles,
 } from 'lucide-react';
 import { ControlPanel } from './ControlPanel';
 import { PreviewFrame } from './PreviewFrame';
@@ -10,13 +10,16 @@ import type {
     DesignerDiagnostics,
     DesignerElementInfo,
     GameView,
+    ResizeChange,
     ScreenId,
     TextLength,
 } from './types';
 import { DEFAULT_CONFIG } from './types';
 import { SCREEN_BY_ID, VIEW_BY_VALUE } from './catalog';
 import {
+    breakpointForWidth,
     buildConfigUrl,
+    buildResizeRequest,
     DeepPartial,
     DesignerBridge,
     getAgentBrief,
@@ -46,16 +49,26 @@ export const DesignerView: React.FC = () => {
     const [config, setConfig] = useState<DesignerConfig>(() => readConfigFromLocation());
     const [diagnostics, setDiagnostics] = useState<DesignerDiagnostics | null>(null);
     const [selectedElement, setSelectedElement] = useState<DesignerElementInfo | null>(null);
+    const [resizeChanges, setResizeChanges] = useState<ResizeChange[]>([]);
     const [status, setStatus] = useState<string | null>('Ready — preview is the real app component tree');
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [scanNonce, setScanNonce] = useState(0);
     const [exportNonce, setExportNonce] = useState(0);
     const [resetElementNonce, setResetElementNonce] = useState(0);
+    const [resetAllNonce, setResetAllNonce] = useState(0);
+    const [styleRequest, setStyleRequest] = useState<{ property: 'fontSize' | 'lineHeight'; value: string; nonce: number } | null>(null);
     const [revealRequest, setRevealRequest] = useState<{ selector: string; nonce: number } | null>(null);
     const configRef = useRef(config);
     const diagnosticsRef = useRef(diagnostics);
     const selectedRef = useRef(selectedElement);
+    const resizeChangesRef = useRef(resizeChanges);
     const statusTimer = useRef<number | null>(null);
+    const historyRef = useRef<DesignerConfig[]>([config]);
+    const historyIndexRef = useRef(0);
+    const historyTimerRef = useRef<number | null>(null);
+    const historySuppressRef = useRef(false);
+    const [historyIndex, setHistoryIndex] = useState(0);
+    const [historyLength, setHistoryLength] = useState(1);
 
     useEffect(() => {
         configRef.current = config;
@@ -71,8 +84,37 @@ export const DesignerView: React.FC = () => {
     }, [selectedElement]);
 
     useEffect(() => {
+        resizeChangesRef.current = resizeChanges;
+    }, [resizeChanges]);
+
+    useEffect(() => {
+        if (historySuppressRef.current) {
+            historySuppressRef.current = false;
+            return;
+        }
+        if (historyTimerRef.current) window.clearTimeout(historyTimerRef.current);
+        historyTimerRef.current = window.setTimeout(() => {
+            const current = configRef.current;
+            const last = historyRef.current[historyIndexRef.current];
+            if (last && JSON.stringify(last) === JSON.stringify(current)) return;
+            const next = historyRef.current.slice(0, historyIndexRef.current + 1);
+            next.push(current);
+            if (next.length > 100) next.shift();
+            historyRef.current = next;
+            const nextIndex = next.length - 1;
+            historyIndexRef.current = nextIndex;
+            setHistoryIndex(nextIndex);
+            setHistoryLength(next.length);
+        }, 350);
+        return () => {
+            if (historyTimerRef.current) window.clearTimeout(historyTimerRef.current);
+        };
+    }, [config]);
+
+    useEffect(() => {
         return () => {
             if (statusTimer.current) window.clearTimeout(statusTimer.current);
+            if (historyTimerRef.current) window.clearTimeout(historyTimerRef.current);
         };
     }, []);
 
@@ -89,6 +131,7 @@ export const DesignerView: React.FC = () => {
     const changeScreen = useCallback((screen: ScreenId) => {
         setDiagnostics(null);
         setSelectedElement(null);
+        setResizeChanges([]);
         setRevealRequest(null);
         setConfig((current) => mergeConfig(current, {
             screen,
@@ -185,6 +228,8 @@ export const DesignerView: React.FC = () => {
         setConfig(next);
         setDiagnostics(null);
         setSelectedElement(null);
+        setResizeChanges([]);
+        setResetAllNonce((value) => value + 1);
         flashStatus('Randomized stress state');
     }, [config, flashStatus]);
 
@@ -227,9 +272,85 @@ export const DesignerView: React.FC = () => {
         }
     }, [flashStatus]);
 
+    const flushPendingHistory = useCallback(() => {
+        if (historyTimerRef.current) {
+            window.clearTimeout(historyTimerRef.current);
+            historyTimerRef.current = null;
+        }
+        const last = historyRef.current[historyIndexRef.current];
+        const current = configRef.current;
+        if (!last || JSON.stringify(last) === JSON.stringify(current)) return;
+        const next = historyRef.current.slice(0, historyIndexRef.current + 1);
+        next.push(current);
+        if (next.length > 100) next.shift();
+        historyRef.current = next;
+        historyIndexRef.current = next.length - 1;
+        setHistoryIndex(next.length - 1);
+        setHistoryLength(next.length);
+    }, []);
+
+    const undo = useCallback((): DesignerConfig | null => {
+        flushPendingHistory();
+        const index = historyIndexRef.current;
+        if (index <= 0) return null;
+        const nextIndex = index - 1;
+        const next = historyRef.current[nextIndex];
+        historySuppressRef.current = true;
+        historyIndexRef.current = nextIndex;
+        setHistoryIndex(nextIndex);
+        setConfig(next);
+        flashStatus('Undo');
+        return next;
+    }, [flashStatus, flushPendingHistory]);
+
+    const redo = useCallback((): DesignerConfig | null => {
+        flushPendingHistory();
+        const index = historyIndexRef.current;
+        if (index >= historyRef.current.length - 1) return null;
+        const nextIndex = index + 1;
+        const next = historyRef.current[nextIndex];
+        historySuppressRef.current = true;
+        historyIndexRef.current = nextIndex;
+        setHistoryIndex(nextIndex);
+        setConfig(next);
+        flashStatus('Redo');
+        return next;
+    }, [flashStatus, flushPendingHistory]);
+
+    useEffect(() => {
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (!(event.metaKey || event.ctrlKey)) return;
+            const target = event.target as HTMLElement | null;
+            if (target && (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable)) return;
+            if (event.key.toLowerCase() === 'z') {
+                event.preventDefault();
+                if (event.shiftKey) redo();
+                else undo();
+            } else if (event.key.toLowerCase() === 'y') {
+                event.preventDefault();
+                redo();
+            }
+        };
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [redo, undo]);
+
     const revealIssue = useCallback((selector: string) => {
         setRevealRequest({ selector, nonce: Date.now() });
     }, []);
+
+    const setSelectedStyle = useCallback((property: 'fontSize' | 'lineHeight', value: string) => {
+        setStyleRequest((current) => ({ property, value, nonce: (current?.nonce ?? 0) + 1 }));
+    }, []);
+
+    const resetAllSizes = useCallback(() => {
+        setResetAllNonce((value) => value + 1);
+        flashStatus('All live size changes reset');
+    }, [flashStatus]);
+
+    const copyResizeRequest = useCallback(() => {
+        void copyText(buildResizeRequest(config, resizeChanges, diagnostics), 'Resize request copied');
+    }, [config, copyText, diagnostics, resizeChanges]);
 
     const resetElementSize = useCallback(() => {
         setResetElementNonce((value) => value + 1);
@@ -272,7 +393,11 @@ export const DesignerView: React.FC = () => {
             scan: () => setScanNonce((value) => value + 1),
             getDiagnostics: () => diagnosticsRef.current,
             getElement: () => selectedRef.current,
-            getAgentBrief: () => getAgentBrief(configRef.current, diagnosticsRef.current, selectedRef.current),
+            undo: () => undo(),
+            redo: () => redo(),
+            getResize: () => resizeChangesRef.current.find((change) => change.selector === selectedRef.current?.selector) ?? null,
+            getResizeChanges: () => resizeChangesRef.current,
+            getAgentBrief: () => getAgentBrief(configRef.current, diagnosticsRef.current, selectedRef.current, resizeChangesRef.current),
             reset: () => {
                 const next = normaliseConfig(DEFAULT_CONFIG);
                 configRef.current = next;
@@ -284,7 +409,7 @@ export const DesignerView: React.FC = () => {
         return () => {
             delete window.__bamboozleDesigner;
         };
-    }, []);
+    }, [redo, undo]);
 
     const screen = SCREEN_BY_ID[config.screen];
     const viewLabel = config.screen === 'join'
@@ -318,7 +443,7 @@ export const DesignerView: React.FC = () => {
                             </span>
                         </div>
                         <div className="truncate text-[10px] text-slate-500">
-                            {screen.label} · {viewLabel} · {config.viewport.width}×{config.viewport.height} · {config.language.toUpperCase()} · {config.contentLength}
+                            {screen.label} · {viewLabel} · {config.viewport.width}×{config.viewport.height} · {breakpointForWidth(config.viewport.width)} · {config.language.toUpperCase()} · {config.contentLength}
                         </div>
                     </div>
                 </div>
@@ -327,6 +452,12 @@ export const DesignerView: React.FC = () => {
                     <span className={`flex items-center gap-1 rounded-md border px-2 py-1 font-mono text-[9px] ${issueCount ? 'border-red-400/20 bg-red-400/10 text-red-300' : 'border-green-400/20 bg-green-400/10 text-green-300'}`}>
                         <Bug size={11} /> {issueCount ? `${issueCount} issue${issueCount === 1 ? '' : 's'}` : 'no issues'}
                     </span>
+                    <button type="button" onClick={() => undo()} disabled={historyIndex <= 0} className="flex items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[9px] font-bold uppercase tracking-wide text-slate-400 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30" title="Undo (Cmd/Ctrl+Z)">
+                        <Undo2 size={12} /> Undo
+                    </button>
+                    <button type="button" onClick={() => redo()} disabled={historyIndex >= historyLength - 1} className="flex items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[9px] font-bold uppercase tracking-wide text-slate-400 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30" title="Redo (Cmd/Ctrl+Shift+Z)">
+                        <Redo2 size={12} /> Redo
+                    </button>
                     <button type="button" onClick={scan} className="flex items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[9px] font-bold uppercase tracking-wide text-slate-400 hover:bg-white/10" title="Scan layout">
                         <ScanLine size={12} /> Scan
                     </button>
@@ -362,6 +493,7 @@ export const DesignerView: React.FC = () => {
                         config={config}
                         diagnostics={diagnostics}
                         selectedElement={selectedElement}
+                        resizeChanges={resizeChanges}
                         status={status}
                         onChange={update}
                         onScreenChange={changeScreen}
@@ -380,6 +512,9 @@ export const DesignerView: React.FC = () => {
                         onReplay={replay}
                         onRevealIssue={revealIssue}
                         onResetElementSize={resetElementSize}
+                        onResetAllSizes={resetAllSizes}
+                        onSetSelectedStyle={setSelectedStyle}
+                        onCopyResizeRequest={copyResizeRequest}
                         onClearOverrides={() => setConfig((current) => normaliseConfig({ ...current, overrides: clearCopyOverrides(current.overrides) }))}
                     />
                 </aside>
@@ -390,6 +525,7 @@ export const DesignerView: React.FC = () => {
                         onViewportChange={changeViewport}
                         onDiagnostics={setDiagnostics}
                         onElement={setSelectedElement}
+                        onResizeChanges={setResizeChanges}
                         onError={(message) => flashStatus(`Preview error: ${message}`)}
                         onExportStatus={(exportStatus, message) => {
                             if (exportStatus === 'started') flashStatus('Rendering PNG…');
@@ -399,6 +535,8 @@ export const DesignerView: React.FC = () => {
                         scanNonce={scanNonce}
                         exportNonce={exportNonce}
                         resetElementNonce={resetElementNonce}
+                        resetAllNonce={resetAllNonce}
+                        styleRequest={styleRequest}
                         revealRequest={revealRequest}
                         onToggleInspect={() => update({ preview: { inspect: !config.preview.inspect } })}
                         onScan={scan}

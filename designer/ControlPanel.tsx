@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
     Copy, Crown, Dice5, Download, Eye, FileJson, Home, LogIn, Megaphone, PenLine,
     Play, RotateCw, ScanLine, Settings as SettingsIcon, Shapes, Trash2, Trophy, Users, Vote,
@@ -12,6 +12,7 @@ import type {
     DesignerDiagnostics,
     DesignerElementInfo,
     GameView,
+    ResizeChange,
     ScreenId,
     TextLength,
     ViewportConfig,
@@ -30,6 +31,44 @@ const ICONS: Record<string, LucideIcon> = {
     Vote, Eye, Trophy, Crown,
 };
 
+const SelectedStyleInputs: React.FC<{
+    selectedElement: DesignerElementInfo;
+    onSetStyle: (property: 'fontSize' | 'lineHeight', value: string) => void;
+}> = ({ selectedElement, onSetStyle }) => {
+    const [fontSize, setFontSize] = useState(parseFloat(selectedElement.fontSize) || 0);
+    const [lineHeight, setLineHeight] = useState(parseFloat(selectedElement.lineHeight) || 0);
+
+    useEffect(() => {
+        setFontSize(parseFloat(selectedElement.fontSize) || 0);
+        setLineHeight(parseFloat(selectedElement.lineHeight) || 0);
+    }, [selectedElement.selector]);
+
+    return (
+        <div className="grid grid-cols-2 gap-2">
+            <LabNumber
+                label="Font size (px)"
+                value={fontSize}
+                min={6}
+                max={120}
+                onChange={(value) => {
+                    setFontSize(value);
+                    onSetStyle('fontSize', `${value}px`);
+                }}
+            />
+            <LabNumber
+                label="Line height (px)"
+                value={lineHeight}
+                min={0}
+                max={160}
+                onChange={(value) => {
+                    setLineHeight(value);
+                    onSetStyle('lineHeight', value > 0 ? `${value}px` : 'normal');
+                }}
+            />
+        </div>
+    );
+};
+
 const ROLE_OPTIONS = [
     { value: 'host' as const, label: 'Host' },
     { value: 'player' as const, label: 'Player' },
@@ -45,6 +84,7 @@ interface ControlPanelProps {
     config: DesignerConfig;
     diagnostics: DesignerDiagnostics | null;
     selectedElement: DesignerElementInfo | null;
+    resizeChanges: ResizeChange[];
     status: string | null;
     onChange: (patch: DeepPartial<DesignerConfig>) => void;
     onScreenChange: (screen: ScreenId) => void;
@@ -63,6 +103,9 @@ interface ControlPanelProps {
     onReplay: () => void;
     onRevealIssue: (selector: string) => void;
     onResetElementSize: () => void;
+    onResetAllSizes: () => void;
+    onSetSelectedStyle: (property: 'fontSize' | 'lineHeight', value: string) => void;
+    onCopyResizeRequest: () => void;
     onClearOverrides: () => void;
 }
 
@@ -70,6 +113,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     config,
     diagnostics,
     selectedElement,
+    resizeChanges,
     status,
     onChange,
     onScreenChange,
@@ -88,6 +132,9 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     onReplay,
     onRevealIssue,
     onResetElementSize,
+    onResetAllSizes,
+    onSetSelectedStyle,
+    onCopyResizeRequest,
     onClearOverrides,
 }) => {
     const [json, setJson] = useState('');
@@ -567,7 +614,35 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                             <span>scroll {selectedElement.scrollWidth}×{selectedElement.scrollHeight}</span>
                         </div>
                         {selectedElement.text && <div className="line-clamp-3 text-[10px] text-slate-500">{selectedElement.text}</div>}
-                        <div className="text-[9px] text-sky-300/50">Live size is preview-only; ask the agent to make it permanent.</div>
+                        <SelectedStyleInputs selectedElement={selectedElement} onSetStyle={onSetSelectedStyle} />
+                        <div className="text-[9px] text-sky-300/50">Live size and type are preview-only; ask the agent to make them permanent.</div>
+                    </div>
+                )}
+
+                {resizeChanges.length > 0 && (
+                    <div className="space-y-1.5 rounded-lg border border-yellow-400/20 bg-yellow-400/5 p-2">
+                        <div className="flex items-center justify-between gap-2">
+                            <span className="text-[10px] font-black uppercase tracking-wide text-yellow-200">Live changes</span>
+                            <LabButton onClick={onResetAllSizes} variant="ghost"><RotateCw size={11} /> Reset all</LabButton>
+                        </div>
+                        {resizeChanges.map((change) => (
+                            <button
+                                key={change.selector}
+                                type="button"
+                                onClick={() => onRevealIssue(change.selector)}
+                                className="w-full rounded-md border border-yellow-400/10 bg-black/20 px-2 py-1.5 text-left hover:bg-yellow-400/10"
+                            >
+                                <div className="truncate text-[10px] font-bold text-yellow-100">{change.text || change.label}</div>
+                                <div className="mt-0.5 font-mono text-[9px] text-yellow-300/60">
+                                    {change.before.width}×{change.before.height} → {change.after.width}×{change.after.height}
+                                    {' · '}
+                                    {change.before.fontSize} → {change.after.fontSize}
+                                </div>
+                            </button>
+                        ))}
+                        <LabButton onClick={onCopyResizeRequest} variant="primary" fullWidth>
+                            <Copy size={12} /> Copy resize request
+                        </LabButton>
                     </div>
                 )}
             </LabSection>

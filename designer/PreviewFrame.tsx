@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Expand, RotateCw, ScanLine } from 'lucide-react';
-import type { DesignerConfig, DesignerDiagnostics, DesignerElementInfo } from './types';
+import type { DesignerConfig, DesignerDiagnostics, DesignerElementInfo, ResizeChange } from './types';
 import type { ParentToPreviewMessage, PreviewToParentMessage } from './bridge';
 import { VIEWPORT_BY_PRESET } from './catalog';
 
@@ -11,9 +11,12 @@ interface PreviewFrameProps {
     onElement: (element: DesignerElementInfo | null) => void;
     onError: (message: string) => void;
     onExportStatus: (status: 'started' | 'done' | 'error', message?: string) => void;
+    onResizeChanges: (changes: ResizeChange[]) => void;
     scanNonce: number;
     exportNonce: number;
     resetElementNonce: number;
+    resetAllNonce: number;
+    styleRequest: { property: 'fontSize' | 'lineHeight'; value: string; nonce: number } | null;
     revealRequest: { selector: string; nonce: number } | null;
     onToggleInspect: () => void;
     onScan: () => void;
@@ -28,9 +31,12 @@ export const PreviewFrame: React.FC<PreviewFrameProps> = ({
     onElement,
     onError,
     onExportStatus,
+    onResizeChanges,
     scanNonce,
     exportNonce,
     resetElementNonce,
+    resetAllNonce,
+    styleRequest,
     revealRequest,
     onToggleInspect,
     onScan,
@@ -79,13 +85,16 @@ export const PreviewFrame: React.FC<PreviewFrameProps> = ({
                 case 'designer:export-status':
                     onExportStatus(message.status, message.message);
                     break;
+                case 'designer:resize-changes':
+                    onResizeChanges(message.changes);
+                    break;
                 default:
                     break;
             }
         };
         window.addEventListener('message', handleMessage);
         return () => window.removeEventListener('message', handleMessage);
-    }, [onDiagnostics, onElement, onError, onExportStatus]);
+    }, [onDiagnostics, onElement, onError, onExportStatus, onResizeChanges]);
 
     useEffect(() => {
         if (!ready) return;
@@ -106,6 +115,16 @@ export const PreviewFrame: React.FC<PreviewFrameProps> = ({
         if (!ready || resetElementNonce <= 0) return;
         post({ type: 'designer:reset-element-size' });
     }, [ready, resetElementNonce]);
+
+    useEffect(() => {
+        if (!ready || resetAllNonce <= 0) return;
+        post({ type: 'designer:reset-all-element-sizes' });
+    }, [ready, resetAllNonce]);
+
+    useEffect(() => {
+        if (!ready || !styleRequest) return;
+        post({ type: 'designer:set-selected-style', property: styleRequest.property, value: styleRequest.value });
+    }, [ready, styleRequest]);
 
     useEffect(() => {
         if (!ready || !revealRequest) return;
