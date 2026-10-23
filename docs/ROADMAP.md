@@ -115,27 +115,6 @@ retired to `docs/ROADMAP-ARCHIVE.md` as **one line**; git history keeps the narr
 - **Relations:** depends on 4; follows `docs/TESTING.md` (integration probe, not a
   visual test).
 
-## 15. Host identity and room takeover (`[ ]`)
-
-- **Request:** the host's id is broadcast in `GameState.hostId` and accepted as the only proof of host, so any player can force host grace and rejoin as host — taking over, killing, or locking the owner out of their room (audit F-02).
-- **Approach:** issue a server-generated 128-bit host secret when the room is created; store only its hash in room meta and return the secret to the creating socket; require it on `joinRoom` host reclaim; never put the host id or secret in broadcast state; require the same token before `createRoom` can grace or close another room for that host. Files: `workers/bamboozle-rooms/src/room.ts`, `directory.ts`, `services/gameService.ts`, `types.ts`.
-- **Verify:** worker test — a player who knows `hostId` cannot reclaim; the host with the secret reclaims inside grace; a third-party `createRoom` with the victim hostId cannot demote the host; a two-browser takeover attempt fails; the normal reconnect flow still passes.
-- **Relations:** relates 16, 17; blocks host-path TTS abuse in 18; depends on 4 for deployment.
-
-## 16. Room action authorization and player-id validation (`[ ]`)
-
-- **Request:** `playerEvent` relays any event type into the host reducer and trusts `payload.playerId`, so players can start/restart/kick, change rounds, and forge lies or votes; `__proto__` ids pollute host maps (audit F-03, F-17).
-- **Approach:** allowlist player-originated event types in the Directory/room DO (`JOIN_ROOM`, `SUBMIT_LIE`, `SUBMIT_VOTE`, `SUBMIT_AUDIENCE_VOTE`, emotes); stamp `senderId` from the socket attachment and overwrite payload ids; make the host reducer reject host-only types on the player channel; validate ids against `^[A-Za-z0-9_-]{1,50}$` and reject `__proto__`/`constructor`/`prototype`; use null-prototype maps.
-- **Verify:** worker test sends `START_GAME`/`RESTART_GAME`/`REMOVE_PLAYER` via `playerEvent` → dropped; a forged vote for another player → rejected; a `__proto__` join does not touch `Object.prototype`; normal player actions still work; the e2e round passes.
-- **Relations:** relates 15, 17.
-
-## 17. Room state read authorization and enumeration (`[ ]`)
-
-- **Request:** `requestState` returns any room's full state by 4-letter code without joining; read events are unthrottled; the 456,976 codes are cheap to scan (audit F-04).
-- **Approach:** require `attachment.roomCode === code` for `requestState`; add `checkRoom`/`getRoomsByHost`/`requestState` to the limiter and add a per-IP limit; strip `hostId` from all outgoing state; consider 5–6 character codes or signed join links later.
-- **Verify:** an unjoined socket gets null/403; a joined socket reads its own room; more than 20 reads/10s returns `RATE_LIMITED`; reconnect and `JOIN LAST GAME` still work.
-- **Relations:** relates 15, 19; blocks targeting in 16.
-
 ## 18. TTS cost abuse (`[ ]`)
 
 - **Request:** `POST /api/tts` is public, unauthenticated, unthrottled and unused by the client; unique text can run up Google TTS/GCS spend (audit F-05).
