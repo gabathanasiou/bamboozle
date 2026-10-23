@@ -115,28 +115,6 @@ retired to `docs/ROADMAP-ARCHIVE.md` as **one line**; git history keeps the narr
 - **Relations:** depends on 4; follows `docs/TESTING.md` (integration probe, not a
   visual test).
 
-## 13. Design lab — live layout viewer/editor for every app screen (`[~]`)
-
-- **Request:** a realtime, responsive design/debug suite covering every app screen and
-  game state, with selectable role/phase, editable copy, player answers/votes, counts,
-  language, viewport, and agent-driven inspection.
-- **Approach:** dev-only `/designer` shell + `/designer/preview` iframe. The iframe
-  mounts the **real** `OnlinePlayerView`, `HostView`, `PlayerView`, `HomeView`,
-  `SettingsView`, `ChangelogModal`, `RoomManagerModal`, `OfflineView`, and `AdminView`
-  with deterministic fixtures and no-op actions, so the preview is 1:1 with production
-  components and breakpoints. `designer/` owns the screen catalogue, fixtures, controls,
-  viewport frame, postMessage bridge, overflow/clipped-text scan, hover inspector, PNG
-  export, URL state, and `window.__bamboozleDesigner` agent bridge. Add optional preview
-  props to the shared views (hide dev chrome, force join step, inject preview data) and
-  extract `HomeView`/`OfflineView`. Docs: `docs/DESIGN_LAB.md`.
-- **Verify:** every screen renders at 320/375/768/1920 in EN/EL with long copy, 6
-  players, audience, and all reveal/leaderboard stages; navigation and replay work;
-  overflow scan flags injected bad copy; URL/JSON round-trip; Home/Settings/Admin
-  previews make no network or localStorage writes; `npm run test:unit`, `npm run build`,
-  `npm run lint` green; online production UI unchanged.
-- **Relations:** independent; item 14 uses the lab for classic parity verification.
-  Agentation annotation/MCP integration is deferred until the core lab works.
-
 ## 14. Classic split-screen views — parity with the online UI (`[ ]`)
 
 - **Request:** the legacy `HostView` (TV) and `PlayerView` (controller) are valid future
