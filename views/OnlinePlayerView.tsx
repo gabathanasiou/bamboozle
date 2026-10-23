@@ -43,7 +43,7 @@ const AvatarStrip = React.memo(({ players, onToggleReactions }: {
                 return (
                     <div key={p.id} data-player-id={p.id} className="relative flex-shrink-0 flex flex-col items-center z-10 w-10 md:w-14">
                         <Avatar seed={p.avatarSeed} size={80} expression={p.expression} className="!w-8 !h-8 md:!w-12 md:!h-12 filter drop-shadow-lg transition-transform" />
-                        <span className="text-white/90 uppercase font-black mt-1 shadow-black/50 drop-shadow-md text-center leading-none justify-center text-[7px] md:text-[9px] break-words line-clamp-2 w-full">{p.name}</span>
+                        <span className="text-white/90 uppercase font-black mt-1 shadow-black/50 drop-shadow-md text-center leading-none justify-center text-[8px] md:text-[10px] break-words line-clamp-2 w-full">{p.name}</span>
                     </div>
                 );
             })}
@@ -760,7 +760,7 @@ export const OnlinePlayerView: React.FC<OnlinePlayerViewProps> = ({
 
                 {/* 5. REVEAL & LEADERBOARD (Shared) */}
                 {state.phase === GamePhase.REVEAL && (
-                    <div className="flex-1 flex flex-col items-center p-2 md:p-3 px-6 md:px-8 min-h-0 w-full overflow-hidden">
+                    <div className="flex-1 flex flex-col items-center p-2 md:p-3 px-1 md:px-8 min-h-0 w-full overflow-hidden">
                         <RevealSequence state={state} actions={actions} setGalleryOverrides={() => { }} isHost={isVip} />
                     </div>
                 )}

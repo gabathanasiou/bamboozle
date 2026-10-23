@@ -319,9 +319,9 @@ export const RevealSequence = ({ state, actions, setGalleryOverrides, isHost }: 
     const audienceVoters = currentAnswer.audienceVotes.map(id => state.audience[id]).filter(Boolean);
 
     return (
-        <div className="flex flex-col items-center justify-start flex-1 min-h-0 w-full max-w-6xl mx-auto relative z-20 px-2 md:px-4 pt-1 gap-6 md:gap-8">
+        <div className="flex flex-col items-center justify-start flex-1 min-h-0 w-full max-w-6xl mx-auto relative z-20 px-1 md:px-4 pt-1 gap-6 md:gap-8">
             <div className="shrink-0 text-center bg-black/40 px-3 md:px-6 py-2 rounded-xl md:rounded-2xl backdrop-blur-xl border border-white/10 w-full max-w-3xl mx-auto shadow-2xl skew-y-1">
-                <p className="text-[11px] md:text-lg font-bold text-gray-100 leading-snug uppercase tracking-wide">
+                <p className="text-[13px] md:text-lg font-bold text-gray-100 leading-snug uppercase tracking-wide">
                     {factParts[0]}
                     <AnimatePresence mode="wait">
                         {showFilledFact ? (
@@ -365,7 +365,7 @@ export const RevealSequence = ({ state, actions, setGalleryOverrides, isHost }: 
                     <div className="w-full h-full flex flex-col items-center p-4 md:p-6 gap-2">
                         {/* Area 1: The Answer Text — fixed height at top */}
                         <div className="shrink-0 w-full flex items-center justify-center py-2">
-                            <h2 className={`font-black leading-tight drop-shadow-sm break-words line-clamp-3 text-center ${getAdaptiveTextClass(currentAnswer.text, 'text-xl md:text-3xl lg:text-4xl', 40)}`}>
+                            <h2 className={`font-black leading-tight drop-shadow-sm break-words line-clamp-3 text-center ${getAdaptiveTextClass(currentAnswer.text, 'text-[27px] md:text-3xl lg:text-4xl', 40)}`}>
                                 {currentAnswer.text}
                             </h2>
                         </div>
@@ -396,7 +396,7 @@ export const RevealSequence = ({ state, actions, setGalleryOverrides, isHost }: 
                                                             key="pts"
                                                             initial={{ scale: 0, opacity: 0, y: 10 }}
                                                             animate={{ scale: 1, opacity: 1, y: 0 }}
-                                                            className="text-yellow-500 font-black text-sm md:text-base drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)] mb-0.5 leading-none"
+                                                            className="text-yellow-500 font-black text-[22px] md:text-2xl drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)] mb-0.5 leading-none"
                                                             style={{ WebkitTextStroke: '0.5px black' }}
                                                         >
                                                             +{pointsConfig.truth}
@@ -405,11 +405,11 @@ export const RevealSequence = ({ state, actions, setGalleryOverrides, isHost }: 
                                                 </AnimatePresence>
 
                                                 <div className="flex flex-col items-center">
-                                                    <Avatar seed={voter.avatarSeed} size={80} expression={voterExpression} className="filter drop-shadow-lg !w-14 !h-14 md:!w-[70px] md:!h-[70px]" />
-                                                    <div className="font-bold mt-1 text-[10px] md:text-xs break-words max-w-[64px] md:max-w-[80px] opacity-90 text-center leading-tight">{voter.name}</div>
+                                                    <Avatar seed={voter.avatarSeed} size={80} expression={voterExpression} className="filter drop-shadow-lg !w-[70px] !h-[70px] md:!w-20 md:!h-20" />
+                                                    <div className="font-bold mt-1 text-[10px] md:text-xs break-words max-w-[80px] md:max-w-[90px] opacity-90 text-center leading-tight">{voter.name}</div>
                                                     <motion.div
                                                         initial={{ scale: 0 }} animate={{ scale: 1 }}
-                                                        className={`${isTruth ? 'bg-green-600' : 'bg-red-600'} text-white font-black px-2 py-0.5 rounded-full text-[9px] md:text-[11px] uppercase shadow-md border-2 border-white whitespace-nowrap mt-1`}
+                                                        className={`${isTruth ? 'bg-green-600' : 'bg-red-600'} text-white font-black px-2 py-0.5 rounded-full text-[11px] md:text-xs uppercase shadow-md border-2 border-white whitespace-nowrap mt-1`}
                                                     >
                                                         {isTruth ? getText(state.language, 'GAME_TAG_SMART') : getText(state.language, 'GAME_TAG_FOOLED')}
                                                     </motion.div>
@@ -503,7 +503,7 @@ export const RevealSequence = ({ state, actions, setGalleryOverrides, isHost }: 
                                 <motion.div
                                     initial={{ scale: 3, opacity: 0 }}
                                     animate={{ scale: 1, opacity: 1 }}
-                                    className="text-[13px] md:text-xl font-black text-white drop-shadow-xl border-[2px] md:border-4 border-white px-4 md:px-8 py-1.5 md:py-3 bg-green-500 rounded-xl md:rounded-2xl uppercase shadow-xl transform -rotate-2"
+                                    className="text-lg md:text-2xl font-black text-white drop-shadow-xl border-[2px] md:border-4 border-white px-5 md:px-8 py-1.5 md:py-3 bg-green-500 rounded-xl md:rounded-2xl uppercase shadow-xl transform -rotate-2"
                                 >
                                     {getText(state.language, 'GAME_THE_TRUTH')}
                                 </motion.div>
