@@ -2,6 +2,14 @@
 
 Status: reference — Android/RevenueCat plan; web checkout + Supabase webhooks are roadmap item 5.
 
+> **Superseded — do not implement.** The host-token design in this document is
+> retired: it minted a host JWT from a client-supplied `userId` without verifying
+> the purchase, which amounted to trusting the client. Roadmap item 5 is the only
+> approved flow: a separate Supabase project + Edge Function verifies the purchase
+> and mints a short-lived room token that the Worker checks through
+> `authorizeHost()` with `AUTH_MODE=token`. Keep the RevenueCat/Google Play setup
+> notes below, but do not build `POST /api/get-host-token`.
+
 ## Why RevenueCat?
 
 Implementing Google Play Billing from scratch requires you to:
@@ -25,13 +33,13 @@ Android App (Capacitor)            RevenueCat              Google Play
         │                               │                       │
         │                          Your Server                  │
         │                               │                       │
-        │── POST /api/get-host-token ───→│                       │
-        │   (with RC customerInfo)       │ issues JWT            │
-        │←── JWT ───────────────────────│                       │
+        │── request short-lived token ──→│                       │
+        │   (after RevenueCat confirms)  │ verifies entitlement  │
+        │←── room token ────────────────│                       │
         │                               │                       │
-        │── socket createRoom(JWT) ─────→│                       │
-        │                               │ validates JWT, creates room
-        │←── roomCode ──────────────────│                       │
+        │── socket createRoom(token) ───→│                       │
+        │                               │ verifies token, creates room
+        │←── roomCode + hostSecret ─────│                       │
 ```
 
 RevenueCat talks to Google. Your server talks to RevenueCat's simple state (via the JWT your server issues). The two are cleanly separated.
@@ -238,30 +246,13 @@ function validateHostToken(token) {
 module.exports = { issueHostToken, validateHostToken };
 ```
 
-### 4.3 New Server Endpoint
+### 4.3 New Server Endpoint — superseded, do not implement
 
-```javascript
-// In server/index.js (or a new router file)
-const { issueHostToken, validateHostToken } = require('./entitlement');
-
-// Client calls this after RevenueCat confirms entitlement
-app.post('/api/get-host-token', (req, res) => {
-  if (process.env.NODE_ENV !== 'production') {
-    // Dev: issue token to anyone — no RC check needed
-    return res.json({ token: issueHostToken(req.body.userId || 'dev-user') });
-  }
-
-  const { userId, rcToken } = req.body;
-
-  // Optional: verify the RC token with RevenueCat's REST API
-  // For MVP, trusting the client is acceptable since the server JWT
-  // is the actual security layer — a fake rcToken just gets you a JWT,
-  // but that JWT is still associated with a userId which you can audit.
-  
-  const token = issueHostToken(userId);
-  res.json({ token });
-});
-```
+> **Superseded — do not implement.** The old `POST /api/get-host-token` endpoint
+> signed a host JWT from a client-supplied `userId` without verifying the
+> RevenueCat/Play purchase. It must not be implemented. Roadmap item 5 replaces it
+> with a short-lived room token minted by the entitlement service and verified by
+> the Worker through `authorizeHost()`.
 
 ### 4.4 Gate `createRoom`
 
@@ -313,7 +304,7 @@ This is the part that matters most day-to-day.
 2. Build the Android app via Android Studio
 3. Make a "purchase" → Google shows the native sheet but charges NOTHING
 4. RevenueCat SDK receives the test receipt → `entitlements.active['hosting']` becomes true
-5. App calls `/api/get-host-token` → gets JWT → can now host
+5. App requests a short-lived room token from the entitlement service → can now host
 
 ### Sandbox vs Production
 RevenueCat automatically detects sandbox purchases (from license testers) and handles them correctly. No extra config needed.

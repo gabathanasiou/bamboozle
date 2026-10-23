@@ -1,6 +1,13 @@
 # Entitlement & Access Control System
 
-Status: **phase-2 design only — not implemented.** Phase 1 ships `workers/bamboozle-rooms/src/auth.ts` with `authorizeHost()` and `AUTH_MODE=none`; `createRoom` accepts an optional `token` but ignores it. Roadmap item 5 replaces the client-trusted JWT below with a separate Supabase project + short-lived room tokens.
+Status: **superseded — not implemented.** Phase 1 ships `workers/bamboozle-rooms/src/auth.ts` with `authorizeHost()` and `AUTH_MODE=none`; `createRoom` accepts an optional `token` but ignores it. Roadmap item 5 replaces this design with a separate Supabase project + short-lived room tokens.
+
+> **Superseded — do not implement.** This document's client-trusted JWT design is
+> retired. It issued host tokens from client input without independently verifying
+> the purchase. Roadmap item 5 is the approved design: a separate Supabase project
+> with `profiles`/`entitlements`/`purchases`, RevenueCat/Paddle webhooks, and a
+> short-lived room token minted by an Edge Function and verified by the Worker's
+> `authorizeHost()` seam (`AUTH_MODE=token`).
 
 ## Overview
 
@@ -73,47 +80,12 @@ Called on each app open to refresh the entitlement token.
 }
 ```
 
-## Room Creation Gating
+## Room Creation Gating — superseded, do not implement
 
-### Modified `createRoom` Socket Event
-
-```javascript
-// BEFORE (current — anyone can host)
-socket.on('createRoom', ({ hostId }, callback) => {
-  const roomCode = generateRoomCode();
-  rooms[roomCode] = { ... };
-  callback(roomCode);
-});
-
-// AFTER (entitlement-gated)
-socket.on('createRoom', async ({ hostId, token }, callback) => {
-  // 1. Validate the JWT token
-  const entitlement = validateToken(token);
-  
-  if (!entitlement) {
-    // Check if free trial is available
-    if (!freeTrialUsed[hostId]) {
-      freeTrialUsed[hostId] = true;
-      // Allow one free game — proceed
-    } else {
-      callback({ error: 'ENTITLEMENT_REQUIRED' });
-      return;
-    }
-  }
-
-  // 2. Check rate limits
-  const hostRoomCount = countRoomsByHost(hostId);
-  if (hostRoomCount >= MAX_ROOMS_PER_HOST) {
-    callback({ error: 'MAX_ROOMS_REACHED' });
-    return;
-  }
-
-  // 3. Create room as normal
-  const roomCode = generateRoomCode();
-  rooms[roomCode] = { ..., hostEntitlement: entitlement };
-  callback({ roomCode });
-});
-```
+> **Superseded — do not implement.** The `createRoom` / JWT snippet that used to
+> live here trusted a client-supplied token. Roadmap item 5 replaces it: the
+> entitlement service mints a short-lived room token after verifying the purchase,
+> and the Worker checks it through `authorizeHost()` with `AUTH_MODE=token`.
 
 ## Free Trial Logic
 
