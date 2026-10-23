@@ -142,6 +142,8 @@ async function main() {
     assert(/^[a-f0-9]{32}$/.test(hostSecret || ''), 'server-issued host secret');
     const check = await player.ack('checkRoom', { roomCode });
     assert(check.exists === true, 'checkRoom exists');
+    const again = await host.ack('createRoom', { hostId });
+    assert(again?.error === 'ALREADY_IN_ROOM', `second create on one socket: ${JSON.stringify(again)}`);
   });
 
   await step('joinRoom PLAYER + AUDIENCE with identical state', async () => {

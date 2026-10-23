@@ -56,6 +56,7 @@ limit.
 | WebSockets per IP / total | 32 / 1000 | Directory WebSocket upgrade |
 | WebSocket upgrades per IP | 30 per minute | Directory upgrade budget |
 | `createRoom` per IP | 10 per hour | Directory |
+| Rooms per socket | 1 | Directory (second create → `ALREADY_IN_ROOM`) |
 | Rooms total | 500 | Directory |
 | Players per room | 6 (+ host) | `BambooRoom.join` / `playerEvent` |
 | Audience per room | 20 | `BambooRoom.join` / `playerEvent` |

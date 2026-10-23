@@ -83,8 +83,8 @@ reserved keys (`__proto__`, `constructor`, `prototype`) are rejected.
 - Read events also get a per-IP budget of 60 per 10s (best-effort, held in the
   Directory instance).
 - 32 WebSockets per IP and 1,000 total; 30 upgrade attempts/minute/IP; 10
-  `createRoom` calls per IP per hour; 500 rooms total. Over-cap joins/creates
-  return `ROOM_FULL`/`RATE_LIMITED`.
+  `createRoom` calls per IP per hour; 500 rooms total; one room per socket
+  (`ALREADY_IN_ROOM`). Over-cap joins/creates return `ROOM_FULL`/`RATE_LIMITED`.
 - 6 players (+ host) and 20 audience members per room; a full room returns
   `ROOM_FULL`.
 - A persisted game state above 128 KiB is rejected with `STATE_TOO_LARGE`; an

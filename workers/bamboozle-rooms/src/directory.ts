@@ -278,6 +278,12 @@ export class Directory {
       }
 
       case 'createRoom': {
+        if (attachment.roomCode) {
+          // One socket owns one room. This also stops a client from leaving a
+          // trail of zombie rooms by creating repeatedly on the same socket.
+          ack({ error: 'ALREADY_IN_ROOM' });
+          return;
+        }
         const hostId = normalizeHostId(data.hostId);
         if (!hostId) {
           ack({ error: 'INVALID_HOST_ID' });
