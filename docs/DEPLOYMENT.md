@@ -92,11 +92,12 @@ recurring migration.
 
 `.github/workflows/ci.yml` runs on every PR and on pushes to `main`: app lint
 (roadmap + doc budget), `tsc --noEmit`, unit tests, worker typecheck/tests, the
-production build, then Playwright. `main` is branch-protected: the
-`Lint, typecheck, test, build` check and a PR are required, so a red check blocks
-the merge. Netlify no longer builds on push (see Netlify), so merging and
-shipping are separate steps. Do not add a direct-push bypass for routine work;
-use a PR.
+production build, then Playwright. `main` is protected against force pushes and
+deletion, and the `Lint, typecheck, test, build` check is required on any PR.
+Routine work may be merged locally and pushed directly to `main`; CI still runs
+on every push, so check that run after pushing. Prefer a PR when the change is
+risky or needs review. Netlify no longer builds on push (see Netlify), so
+merging and shipping are separate steps.
 
 The root `tsconfig.json` excludes `workers/**` (the Worker has its own tsconfig)
 and the unused `data/_oldquestions.ts` backup; the live question banks are

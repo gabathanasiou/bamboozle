@@ -113,8 +113,9 @@ structural selector.
 - Suite caps live in `scripts/check-doc-budget.mjs` (specs/tests) and fail `lint` when
   exceeded. Growth must be deliberate.
 - CI (`.github/workflows/ci.yml`) runs on every PR and on `main`: lint, app
-  typecheck, unit, worker typecheck/tests, build, Playwright. `main` requires that
-  job, so the gate is the merge gate — see `docs/DEPLOYMENT.md` §CI gate.
+  typecheck, unit, worker typecheck/tests, build, Playwright. `main` blocks force
+  pushes/deletion and requires the job on PRs; direct pushes are allowed, so
+  check the run after pushing — see `docs/DEPLOYMENT.md` §CI gate.
 
 ## Rules (MUST NOT)
 
