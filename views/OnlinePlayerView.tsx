@@ -676,17 +676,17 @@ export const OnlinePlayerView: React.FC<OnlinePlayerViewProps> = ({
                 {state.phase === GamePhase.VOTING && (
                     <div className="flex-1 flex flex-col items-center w-full h-full overflow-hidden relative">
                         {/* Fixed Header */}
-                        <div className="shrink-0 w-full max-w-md p-3 pb-2 flex flex-col items-center z-10">
+                        <div className="shrink-0 w-full max-w-md md:max-w-2xl p-3 pb-2 flex flex-col items-center z-10">
                             {/* Timer */}
                             <div className="flex justify-center mb-4 relative z-30">
                                 <div className="flex items-center gap-2 bg-black/60 backdrop-blur-md px-4 py-1 rounded-full border border-white/20 shadow-lg">
                                     <Clock size={18} className="text-yellow-400 animate-pulse" />
-                                    <span className="font-mono font-bold text-md text-white">{state.timeLeft}s</span>
+                                    <span className="font-mono font-bold text-md md:text-2xl md:leading-9 text-white">{state.timeLeft}s</span>
                                 </div>
                             </div>
 
                             <div className="w-full bg-purple-800/50 p-4 mb-4 justify-center items-center rounded-xl border border-white/10 backdrop-blur-sm shadow-md text-center max-h-[20vh] min-h-[10vh] overflow-y-auto">
-                                <p className={`font-bold text-white leading-tight uppercase ${getAdaptiveTextClass(state.currentQuestion?.fact.replace('<BLANK>', '________') || '', 'text-lg', 75)}`}>
+                                <p className={`font-bold text-white leading-tight uppercase text-base md:text-2xl ${getAdaptiveTextClass(state.currentQuestion?.fact.replace('<BLANK>', '________') || '', 'text-base md:text-2xl', 75)}`}>
                                     {state.currentQuestion?.fact.replace('<BLANK>', '________')}
                                 </p>
                             </div>
@@ -695,7 +695,7 @@ export const OnlinePlayerView: React.FC<OnlinePlayerViewProps> = ({
                         {/* Answers Grid - Scrollable */}
                         <div
                             ref={answersRef}
-                            className="flex-1 w-full overflow-y-auto px-2 pb-4 no-scrollbar flex justify-center min-h-0"
+                            className="flex-1 w-full overflow-y-auto px-2 pb-4 no-scrollbar flex justify-center min-h-0 md:mx-auto md:max-w-2xl lg:max-w-none"
                         >
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 w-full pb-8 h-max">
                                 {state.roundAnswers.filter(a => !a.authorIds.includes(playerId)).map((ans, idx) => {
@@ -724,7 +724,7 @@ export const OnlinePlayerView: React.FC<OnlinePlayerViewProps> = ({
                                               `}
                                         >
                                             <div className="relative z-10 flex flex-col w-full justify-center items-center h-full px-2">
-                                                <span className={`leading-tight text-center w-full break-words whitespace-normal drop-shadow-sm ${getAdaptiveTextClass(ans.text, 'text-md :text-lg', 30)}`}>{ans.text}</span>
+                                                <span className={`leading-tight text-center w-full break-words whitespace-normal drop-shadow-sm text-base md:text-2xl ${getAdaptiveTextClass(ans.text, 'text-base md:text-2xl', 30)}`}>{ans.text}</span>
                                             </div>
 
                                             {/* Audience Indicator - Absolute Top Right */}
