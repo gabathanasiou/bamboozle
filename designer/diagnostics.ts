@@ -53,13 +53,20 @@ export const cssSelector = (element: HTMLElement): string => {
 export const describeElement = (element: HTMLElement): DesignerElementInfo => {
     const rect = element.getBoundingClientRect();
     const style = window.getComputedStyle(element);
+    const visibleText = Array.from(element.childNodes)
+        .filter((node) => !(node instanceof Element) || !['STYLE', 'SCRIPT'].includes(node.tagName))
+        .map((node) => node.textContent ?? '')
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 160);
     return {
         selector: cssSelector(element),
         tag: element.tagName.toLowerCase(),
         id: element.id,
         classes: typeof element.className === 'string' ? element.className : '',
         region: element.getAttribute('data-region') ?? element.getAttribute('data-testid') ?? '',
-        text: (directText(element) || element.textContent?.trim() || '').replace(/\s+/g, ' ').slice(0, 160),
+        text: directText(element) || visibleText,
         rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
         fontSize: style.fontSize,
         lineHeight: style.lineHeight,

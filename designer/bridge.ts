@@ -249,6 +249,7 @@ export const getAgentBrief = (
                 `  - box ${change.before.width}×${change.before.height} → ${change.after.width}×${change.after.height}`,
                 `  - font ${change.before.fontSize}/${change.before.lineHeight} → ${change.after.fontSize}/${change.after.lineHeight}`,
                 `  - viewport ${change.viewport.width}×${change.viewport.height} · ${change.viewport.breakpoint} breakpoint`,
+                `  - similar elements: ${change.similarCount}`,
                 `  - text: ${change.text || '(none)'}`,
             );
         }
@@ -281,6 +282,7 @@ export const buildResizeRequest = (
                 `- \`${change.selector}\``,
                 `  - box ${change.before.width}×${change.before.height} → ${change.after.width}×${change.after.height}`,
                 `  - font ${change.before.fontSize}/${change.before.lineHeight} → ${change.after.fontSize}/${change.after.lineHeight}`,
+                `  - similar elements: ${change.similarCount}`,
                 `  - text: ${change.text || '(none)'}`,
             );
         }

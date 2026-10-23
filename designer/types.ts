@@ -103,6 +103,7 @@ export interface PreviewControls {
     showIssues: boolean;
     inspect: boolean;
     resizeSelection: boolean;
+    applyToSimilar: boolean;
     replayKey: number;
 }
 
@@ -185,6 +186,7 @@ export interface ResizeChange {
     label: string;
     classes: string;
     text: string;
+    similarCount: number;
     before: ElementSnapshot;
     after: ElementSnapshot;
     viewport: {
@@ -288,6 +290,7 @@ export const DEFAULT_CONFIG: DesignerConfig = {
         showIssues: true,
         inspect: false,
         resizeSelection: false,
+        applyToSimilar: true,
         replayKey: 0,
     },
     notes: '',

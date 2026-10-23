@@ -560,6 +560,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 <div className="grid grid-cols-2 gap-2">
                     <LabToggle label="Inspect" checked={config.preview.inspect} onChange={(inspect) => setPreview({ inspect })} />
                     <LabToggle label="Resize selected" checked={config.preview.resizeSelection} onChange={(resizeSelection) => setPreview({ resizeSelection })} hint="Preview only; drag the yellow handle" />
+                    <LabToggle label="Apply to similar" checked={config.preview.applyToSimilar} onChange={(applyToSimilar) => setPreview({ applyToSimilar })} hint="On by default · same tag + classes" />
                     <LabToggle label="Outlines" checked={config.preview.outlines} onChange={(outlines) => setPreview({ outlines })} />
                     <LabToggle label="Show issues" checked={config.preview.showIssues} onChange={(showIssues) => setPreview({ showIssues })} />
                     <LabToggle label="Reduce motion" checked={config.preview.reduceMotion} onChange={(reduceMotion) => setPreview({ reduceMotion })} />
@@ -637,6 +638,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                                     {change.before.width}×{change.before.height} → {change.after.width}×{change.after.height}
                                     {' · '}
                                     {change.before.fontSize} → {change.after.fontSize}
+                                    {change.similarCount > 1 ? ` · ${change.similarCount} similar` : ''}
                                 </div>
                             </button>
                         ))}

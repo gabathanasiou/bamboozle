@@ -60,13 +60,17 @@ INTRO/REVEAL/LEADER. Host-disconnected and room-closed overlays are player-side.
   replay, reduced motion, mute.
 - **Live element editor:** toggle **Resize selected**, pick an element, then drag
   the yellow handle. The selected-element card also has **Font size** and
-  **Line height** inputs. Changes are preview-only and reset when the scene
-  remounts; use **Reset size**, **Reset all**, or **Copy resize request** so the
-  agent can codify them.
+  **Line height** inputs. **Apply to similar** is on by default: changes are
+  applied to every visible element with the same tag + class signature (shared
+  components), and the handoff records the group count. This is a DOM heuristic,
+  not a React tree: it can overmatch elements that happen to share classes, so
+  toggle it off for a one-off. A grouped edit is one undo step. Changes are
+  preview-only and reset when the scene remounts; use **Reset size**,
+  **Reset all**, or **Copy resize request** so the agent can codify them.
 - **Undo / redo:** header buttons and Cmd/Ctrl+Z / Cmd/Ctrl+Shift+Z (Ctrl+Y also
   redoes). This covers **live design edits only** — element box resize, font size,
-  line height, reset size, and reset all. It deliberately does not undo screen,
-  view, content, state, or viewport changes.
+  line height, grouped similar-element edits, reset size, and reset all. It
+  deliberately does not undo screen, view, content, state, or viewport changes.
 - **Live changes:** the Inspect panel lists every changed element with its
   before → after box/font sizes and a one-click resize request.
 - **Share:** URL hash, copy JSON, paste JSON, copy agent brief, PNG export.

@@ -428,6 +428,7 @@ export const Avatar: React.FC<AvatarProps> = ({ seed, size = 100, className = ''
     return (
         <div
             ref={containerRef}
+            data-design-avatar="true"
             className={`relative select-none ${className}`}
             style={{ width: size, height: size }}
         >

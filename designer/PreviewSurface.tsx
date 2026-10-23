@@ -112,9 +112,43 @@ export const PreviewSurface: React.FC = () => {
         };
     }, []);
 
-    const postResizeChanges = useCallback(() => {
-        post({ type: 'designer:resize-changes', changes: Array.from(resizeChangesRef.current.values()) });
-    }, [post]);
+    const getSimilarTargets = useCallback((element: HTMLElement): HTMLElement[] => {
+        if (!configRef.current.preview.applyToSimilar) return [element];
+        const className = typeof element.className === 'string' ? element.className.trim() : '';
+        if (!className) return [element];
+        const appRoot = document.querySelector<HTMLElement>('[data-designer-app]');
+        if (!appRoot) return [element];
+        const matches = Array.from(appRoot.querySelectorAll<HTMLElement>(element.tagName))
+            .filter((candidate) => {
+                if (candidate === element) return true;
+                if (candidate.className !== element.className) return false;
+                const rect = candidate.getBoundingClientRect();
+                return rect.width > 0 && rect.height > 0;
+            });
+        return matches.slice(0, 24);
+    }, []);
+
+    const captureTarget = useCallback((element: HTMLElement) => {
+        const selector = describeElement(element).selector;
+        if (!originalStylesRef.current.has(selector)) {
+            originalStylesRef.current.set(selector, {
+                width: element.style.width,
+                height: element.style.height,
+                minWidth: element.style.minWidth,
+                minHeight: element.style.minHeight,
+                maxWidth: element.style.maxWidth,
+                maxHeight: element.style.maxHeight,
+                flex: element.style.flex,
+                boxSizing: element.style.boxSizing,
+                fontSize: element.style.fontSize,
+                lineHeight: element.style.lineHeight,
+            });
+        }
+        if (!resizeBaselinesRef.current.has(selector)) {
+            resizeBaselinesRef.current.set(selector, snapshotElement(element));
+        }
+        return { element, selector };
+    }, [snapshotElement]);
 
     const postEditHistory = useCallback(() => {
         post({
@@ -134,10 +168,19 @@ export const PreviewSurface: React.FC = () => {
 
     const refreshResizeChanges = useCallback(() => {
         const next = new Map<string, ResizeChange>();
-        editStateRef.current.forEach((_patch, selector) => {
-            const before = resizeBaselinesRef.current.get(selector);
+        const seenGroups = new Set<string>();
+        const entries = Array.from(editStateRef.current.keys()).map((selector) => {
             const element = document.querySelector<HTMLElement>(selector);
-            if (!before || !element) return;
+            if (!element) return null;
+            const info = describeElement(element);
+            return { selector, element, info, groupKey: `${info.tag}|${info.classes}` };
+        }).filter((entry): entry is { selector: string; element: HTMLElement; info: DesignerElementInfo; groupKey: string } => !!entry);
+
+        entries.forEach(({ selector, element, info, groupKey }) => {
+            if (seenGroups.has(groupKey)) return;
+            const before = resizeBaselinesRef.current.get(selector);
+            if (!before) return;
+            seenGroups.add(groupKey);
             const after = snapshotElement(element);
             if (
                 before.width === after.width
@@ -147,12 +190,14 @@ export const PreviewSurface: React.FC = () => {
             ) {
                 return;
             }
-            const info = describeElement(element);
+            const similarCount = entries.filter((entry) => entry.groupKey === groupKey).length;
+            const text = info.text || (element.hasAttribute('data-design-avatar') ? 'Avatar' : '');
             next.set(selector, {
                 selector,
-                label: info.text || info.tag,
+                label: text || info.tag,
                 classes: info.classes,
-                text: info.text,
+                text,
+                similarCount,
                 before,
                 after,
                 viewport: {
@@ -174,17 +219,17 @@ export const PreviewSurface: React.FC = () => {
             const original = originalStylesRef.current.get(selector);
             if (original) {
                 Object.entries(original).forEach(([key, value]) => {
-                    (element.style as unknown as Record<string, string>)[key] = value;
+                    element.style.setProperty(key, value);
                 });
             } else {
                 MANAGED_STYLE_KEYS.forEach((key) => {
-                    (element.style as unknown as Record<string, string>)[key] = '';
+                    element.style.removeProperty(key);
                 });
             }
             const patch = state.get(selector);
             if (patch) {
                 Object.entries(patch).forEach(([key, value]) => {
-                    (element.style as unknown as Record<string, string>)[key] = value;
+                    element.style.setProperty(key, value, key === 'width' || key === 'height' ? 'important' : '');
                 });
             }
         });
@@ -262,30 +307,26 @@ export const PreviewSurface: React.FC = () => {
         if (!selector) return;
         const element = document.querySelector<HTMLElement>(selector);
         if (!element) return;
-        const original = originalStylesRef.current.get(selector);
-        if (original) {
-            Object.entries(original).forEach(([key, value]) => {
-                (element.style as unknown as Record<string, string>)[key] = value;
-            });
-        } else {
-            element.style.width = '';
-            element.style.height = '';
-            element.style.minWidth = '';
-            element.style.minHeight = '';
-            element.style.maxWidth = '';
-            element.style.maxHeight = '';
-            element.style.flex = '';
-            element.style.boxSizing = '';
-            element.style.fontSize = '';
-            element.style.lineHeight = '';
-        }
-        editStateRef.current.delete(selector);
+        const targets = getSimilarTargets(element).map(captureTarget);
+        targets.forEach(({ element: target, selector: targetSelector }) => {
+            const original = originalStylesRef.current.get(targetSelector);
+            if (original) {
+                Object.entries(original).forEach(([key, value]) => {
+                    target.style.setProperty(key, value);
+                });
+            } else {
+                MANAGED_STYLE_KEYS.forEach((key) => {
+                    target.style.removeProperty(key);
+                });
+            }
+            editStateRef.current.delete(targetSelector);
+        });
         refreshResizeChanges();
         commitEditHistory();
         const info = describeElement(element);
         setSelected(info);
         post({ type: 'designer:element', element: info });
-    }, [commitEditHistory, post, refreshResizeChanges, selected?.selector]);
+    }, [captureTarget, commitEditHistory, getSimilarTargets, post, refreshResizeChanges, selected?.selector]);
 
     const resetAllSizes = useCallback(() => {
         applyEditState(new Map());
@@ -307,35 +348,22 @@ export const PreviewSurface: React.FC = () => {
         if (!selector) return;
         const element = document.querySelector<HTMLElement>(selector);
         if (!element) return;
-        const before = resizeBaselinesRef.current.get(selector) ?? snapshotElement(element);
-        if (!resizeBaselinesRef.current.has(selector)) resizeBaselinesRef.current.set(selector, before);
-        if (!originalStylesRef.current.has(selector)) {
-            originalStylesRef.current.set(selector, {
-                width: element.style.width,
-                height: element.style.height,
-                minWidth: element.style.minWidth,
-                minHeight: element.style.minHeight,
-                maxWidth: element.style.maxWidth,
-                maxHeight: element.style.maxHeight,
-                flex: element.style.flex,
-                boxSizing: element.style.boxSizing,
-                fontSize: element.style.fontSize,
-                lineHeight: element.style.lineHeight,
-            });
-        }
-        if (property === 'fontSize') element.style.fontSize = value;
-        else element.style.lineHeight = value;
+        const targets = getSimilarTargets(element).map(captureTarget);
+        targets.forEach(({ element: target, selector: targetSelector }) => {
+            if (property === 'fontSize') target.style.fontSize = value;
+            else target.style.lineHeight = value;
+            const patch = editStateRef.current.get(targetSelector) ?? {};
+            patch[property] = value;
+            editStateRef.current.set(targetSelector, patch);
+        });
         const rect = element.getBoundingClientRect();
         setSelectionRect({ x: rect.x, y: rect.y, width: rect.width, height: rect.height });
-        const patch = editStateRef.current.get(selector) ?? {};
-        patch[property] = value;
-        editStateRef.current.set(selector, patch);
         refreshResizeChanges();
         scheduleEditHistory();
         const info = describeElement(element);
         setSelected(info);
         post({ type: 'designer:element', element: info });
-    }, [post, refreshResizeChanges, scheduleEditHistory, selected?.selector, snapshotElement]);
+    }, [captureTarget, getSimilarTargets, post, refreshResizeChanges, scheduleEditHistory, selected?.selector]);
 
     const exportPng = useCallback(async () => {
         const root = document.getElementById(ROOT_ID);
@@ -492,10 +520,14 @@ export const PreviewSurface: React.FC = () => {
         root.style.cursor = 'crosshair';
 
         const resolveTarget = (event: MouseEvent): HTMLElement | null => {
-            const target = event.target;
-            if (!(target instanceof HTMLElement)) return null;
-            if (target.closest('[data-designer-overlay]')) return null;
-            if (!root.contains(target) || target === root) return null;
+            const raw = event.target;
+            if (!(raw instanceof Element)) return null;
+            if (raw.closest('[data-designer-overlay]')) return null;
+            const avatar = raw.closest<HTMLElement>('[data-design-avatar]');
+            if (avatar && root.contains(avatar)) return avatar;
+            let target: HTMLElement | null = raw instanceof HTMLElement ? raw : raw.parentElement;
+            while (target && !(target instanceof HTMLElement)) target = target.parentElement;
+            if (!target || !root.contains(target) || target === root) return null;
             return target;
         };
 
@@ -547,27 +579,7 @@ export const PreviewSurface: React.FC = () => {
         const startY = event.clientY;
         const startWidth = rect.width;
         const startHeight = rect.height;
-        const before = resizeBaselinesRef.current.get(selector) ?? snapshotElement(element);
-        if (!resizeBaselinesRef.current.has(selector)) resizeBaselinesRef.current.set(selector, before);
-
-        if (!originalStylesRef.current.has(selector)) {
-            originalStylesRef.current.set(selector, {
-                width: element.style.width,
-                height: element.style.height,
-                minWidth: element.style.minWidth,
-                minHeight: element.style.minHeight,
-                maxWidth: element.style.maxWidth,
-                maxHeight: element.style.maxHeight,
-                flex: element.style.flex,
-                boxSizing: element.style.boxSizing,
-                fontSize: element.style.fontSize,
-                lineHeight: element.style.lineHeight,
-            });
-        }
-
-        const parentDisplay = element.parentElement
-            ? window.getComputedStyle(element.parentElement).display
-            : '';
+        const targets = getSimilarTargets(element).map(captureTarget);
         let moved = false;
 
         const previousCursor = document.body.style.cursor;
@@ -576,20 +588,25 @@ export const PreviewSurface: React.FC = () => {
         document.body.style.userSelect = 'none';
 
         const updateBox = (width: number, height: number) => {
-            element.style.boxSizing = 'border-box';
-            element.style.maxWidth = 'none';
-            element.style.maxHeight = 'none';
-            element.style.width = `${Math.round(width)}px`;
-            element.style.height = `${Math.round(height)}px`;
-            if (parentDisplay.includes('flex')) element.style.flex = '0 0 auto';
-            const patch = editStateRef.current.get(selector) ?? {};
-            patch.width = element.style.width;
-            patch.height = element.style.height;
-            patch.boxSizing = 'border-box';
-            patch.maxWidth = 'none';
-            patch.maxHeight = 'none';
-            if (parentDisplay.includes('flex')) patch.flex = '0 0 auto';
-            editStateRef.current.set(selector, patch);
+            targets.forEach(({ element: target, selector: targetSelector }) => {
+                const parentDisplay = target.parentElement
+                    ? window.getComputedStyle(target.parentElement).display
+                    : '';
+                target.style.boxSizing = 'border-box';
+                target.style.maxWidth = 'none';
+                target.style.maxHeight = 'none';
+                target.style.setProperty('width', `${Math.round(width)}px`, 'important');
+                target.style.setProperty('height', `${Math.round(height)}px`, 'important');
+                if (parentDisplay.includes('flex')) target.style.flex = '0 0 auto';
+                const patch = editStateRef.current.get(targetSelector) ?? {};
+                patch.width = target.style.getPropertyValue('width');
+                patch.height = target.style.getPropertyValue('height');
+                patch.boxSizing = 'border-box';
+                patch.maxWidth = 'none';
+                patch.maxHeight = 'none';
+                if (parentDisplay.includes('flex')) patch.flex = '0 0 auto';
+                editStateRef.current.set(targetSelector, patch);
+            });
             const next = element.getBoundingClientRect();
             setSelectionRect({ x: next.x, y: next.y, width: next.width, height: next.height });
         };

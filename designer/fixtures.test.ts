@@ -273,6 +273,7 @@ describe('resize handoff', () => {
             label: 'ROOM: BAMZ',
             classes: 'text-sm font-bold',
             text: 'ROOM: BAMZ',
+            similarCount: 4,
             before: { width: 97, height: 20, fontSize: '14px', lineHeight: '20px' },
             after: { width: 161, height: 48, fontSize: '22px', lineHeight: '20px' },
             viewport: { width: 393, height: 852, breakpoint: 'base' as const },
@@ -282,6 +283,7 @@ describe('resize handoff', () => {
         expect(request).toContain('97×20 → 161×48');
         expect(request).toContain('14px/20px → 22px/20px');
         expect(request).toContain('responsive Tailwind');
+        expect(request).toContain('similar elements: 4');
         const brief = getAgentBrief(config, null, null, [change]);
         expect(brief).toContain('## Live resize');
         expect(brief).toContain('97×20 → 161×48');
