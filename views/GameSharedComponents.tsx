@@ -321,7 +321,7 @@ export const RevealSequence = ({ state, actions, setGalleryOverrides, isHost }: 
     return (
         <div className="flex flex-col items-center justify-start flex-1 min-h-0 w-full max-w-6xl mx-auto relative z-20 px-1 md:px-4 pt-1 gap-6 md:gap-8">
             <div className="shrink-0 text-center bg-black/40 px-3 md:px-6 py-2 rounded-xl md:rounded-2xl backdrop-blur-xl border border-white/10 w-full max-w-3xl mx-auto shadow-2xl skew-y-1">
-                <p className="text-[13px] md:text-lg font-bold text-gray-100 leading-snug uppercase tracking-wide">
+                <p className="text-[15px] leading-[26px] md:text-lg md:leading-snug font-bold text-gray-100 uppercase tracking-wide">
                     {factParts[0]}
                     <AnimatePresence mode="wait">
                         {showFilledFact ? (
@@ -365,7 +365,7 @@ export const RevealSequence = ({ state, actions, setGalleryOverrides, isHost }: 
                     <div className="w-full h-full flex flex-col items-center p-4 md:p-6 gap-2">
                         {/* Area 1: The Answer Text — fixed height at top */}
                         <div className="shrink-0 w-full flex items-center justify-center py-2">
-                            <h2 className={`font-black leading-tight drop-shadow-sm break-words line-clamp-3 text-center ${getAdaptiveTextClass(currentAnswer.text, 'text-[27px] md:text-3xl lg:text-4xl', 40)}`}>
+                            <h2 className={`font-black leading-tight drop-shadow-sm break-words line-clamp-3 text-center text-2xl md:text-3xl lg:text-4xl ${getAdaptiveTextClass(currentAnswer.text, 'text-2xl md:text-3xl lg:text-4xl', 40)}`}>
                                 {currentAnswer.text}
                             </h2>
                         </div>
@@ -387,7 +387,7 @@ export const RevealSequence = ({ state, actions, setGalleryOverrides, isHost }: 
                                                 initial={{ y: -40, opacity: 0, scale: 0.5 }}
                                                 animate={{ y: 0, opacity: 1, scale: 1 }}
                                                 transition={{ delay: idx * 0.15, type: 'spring' }}
-                                                className="flex flex-col items-center group shrink-0"
+                                                className="flex flex-col items-center group shrink-0 w-[106px] md:w-auto"
                                             >
                                                 {/* Inline points label directly above avatar */}
                                                 <AnimatePresence>
@@ -406,7 +406,7 @@ export const RevealSequence = ({ state, actions, setGalleryOverrides, isHost }: 
 
                                                 <div className="flex flex-col items-center">
                                                     <Avatar seed={voter.avatarSeed} size={80} expression={voterExpression} className="filter drop-shadow-lg !w-[70px] !h-[70px] md:!w-20 md:!h-20" />
-                                                    <div className="font-bold mt-1 text-[10px] md:text-xs break-words max-w-[80px] md:max-w-[90px] opacity-90 text-center leading-tight">{voter.name}</div>
+                                                    <div className="font-bold mt-1 text-[10px] md:text-xs break-words w-full max-w-[88px] md:max-w-[90px] min-h-[24px] flex items-center justify-center opacity-90 text-center leading-tight">{voter.name}</div>
                                                     <motion.div
                                                         initial={{ scale: 0 }} animate={{ scale: 1 }}
                                                         className={`${isTruth ? 'bg-green-600' : 'bg-red-600'} text-white font-black px-2 py-0.5 rounded-full text-[11px] md:text-xs uppercase shadow-md border-2 border-white whitespace-nowrap mt-1`}
