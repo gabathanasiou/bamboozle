@@ -13,6 +13,7 @@ interface PreviewFrameProps {
     onExportStatus: (status: 'started' | 'done' | 'error', message?: string) => void;
     scanNonce: number;
     exportNonce: number;
+    resetElementNonce: number;
     revealRequest: { selector: string; nonce: number } | null;
     onToggleInspect: () => void;
     onScan: () => void;
@@ -29,6 +30,7 @@ export const PreviewFrame: React.FC<PreviewFrameProps> = ({
     onExportStatus,
     scanNonce,
     exportNonce,
+    resetElementNonce,
     revealRequest,
     onToggleInspect,
     onScan,
@@ -39,6 +41,8 @@ export const PreviewFrame: React.FC<PreviewFrameProps> = ({
     const [loadError, setLoadError] = useState<string | null>(null);
     const [fit, setFit] = useState(true);
     const [scale, setScale] = useState(1);
+    const [isResizing, setIsResizing] = useState(false);
+    const [resizeAxis, setResizeAxis] = useState<'x' | 'y' | 'both' | null>(null);
     const dragRef = useRef<{
         axis: 'x' | 'y' | 'both';
         startX: number;
@@ -99,12 +103,18 @@ export const PreviewFrame: React.FC<PreviewFrameProps> = ({
     }, [exportNonce, ready]);
 
     useEffect(() => {
+        if (!ready || resetElementNonce <= 0) return;
+        post({ type: 'designer:reset-element-size' });
+    }, [ready, resetElementNonce]);
+
+    useEffect(() => {
         if (!ready || !revealRequest) return;
         post({ type: 'designer:reveal-element', selector: revealRequest.selector });
     }, [ready, revealRequest]);
 
     useEffect(() => {
         const measure = () => {
+            if (isResizing) return;
             const element = containerRef.current;
             if (!element) return;
             if (!fit) {
@@ -127,11 +137,15 @@ export const PreviewFrame: React.FC<PreviewFrameProps> = ({
             observer.disconnect();
             window.removeEventListener('resize', measure);
         };
-    }, [fit, config.viewport.width, config.viewport.height]);
+    }, [fit, isResizing, config.viewport.width, config.viewport.height]);
 
     const beginResize = (axis: 'x' | 'y' | 'both') => (event: React.PointerEvent) => {
         event.preventDefault();
         event.stopPropagation();
+        event.currentTarget.setPointerCapture?.(event.pointerId);
+        const startScale = scale;
+        setIsResizing(true);
+        setResizeAxis(axis);
         dragRef.current = {
             axis,
             startX: event.clientX,
@@ -142,20 +156,37 @@ export const PreviewFrame: React.FC<PreviewFrameProps> = ({
         const move = (moveEvent: PointerEvent) => {
             const drag = dragRef.current;
             if (!drag) return;
-            const dx = (moveEvent.clientX - drag.startX) / scale;
-            const dy = (moveEvent.clientY - drag.startY) / scale;
+            const dx = (moveEvent.clientX - drag.startX) / startScale;
+            const dy = (moveEvent.clientY - drag.startY) / startScale;
             const width = drag.axis === 'y' ? drag.startWidth : drag.startWidth + dx;
             const height = drag.axis === 'x' ? drag.startHeight : drag.startHeight + dy;
             onViewportChange(clamp(Math.round(width), 320, 3840), clamp(Math.round(height), 320, 2160), 'custom');
         };
-        const up = () => {
+        const stop = () => {
             dragRef.current = null;
+            setIsResizing(false);
+            setResizeAxis(null);
             window.removeEventListener('pointermove', move);
-            window.removeEventListener('pointerup', up);
+            window.removeEventListener('pointerup', stop);
+            window.removeEventListener('pointercancel', stop);
         };
         window.addEventListener('pointermove', move);
-        window.addEventListener('pointerup', up, { once: true });
+        window.addEventListener('pointerup', stop, { once: true });
+        window.addEventListener('pointercancel', stop, { once: true });
     };
+
+    useEffect(() => {
+        if (!isResizing) return;
+        const cursor = resizeAxis === 'y' ? 'ns-resize' : resizeAxis === 'x' ? 'ew-resize' : 'nwse-resize';
+        const previousCursor = document.body.style.cursor;
+        const previousSelect = document.body.style.userSelect;
+        document.body.style.cursor = cursor;
+        document.body.style.userSelect = 'none';
+        return () => {
+            document.body.style.cursor = previousCursor;
+            document.body.style.userSelect = previousSelect;
+        };
+    }, [isResizing, resizeAxis]);
 
     const viewportLabel = VIEWPORT_BY_PRESET[config.viewport.preset]?.label ?? 'Custom viewport';
 
@@ -218,7 +249,7 @@ export const PreviewFrame: React.FC<PreviewFrameProps> = ({
                             title="Design lab live preview"
                             data-testid="designer-preview"
                             onLoad={() => setLoadError(null)}
-                            className="h-full w-full border-0 bg-[#1a0b2e]"
+                            className={`h-full w-full border-0 bg-[#1a0b2e] ${isResizing ? 'pointer-events-none' : ''}`}
                         />
                         {!ready && !loadError && (
                             <div className="absolute inset-0 flex items-center justify-center bg-[#1a0b2e] text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">
@@ -234,19 +265,24 @@ export const PreviewFrame: React.FC<PreviewFrameProps> = ({
 
                     <div
                         onPointerDown={beginResize('x')}
-                        className="absolute -right-1 top-6 bottom-6 w-2 cursor-ew-resize rounded-full bg-white/0 hover:bg-yellow-400/40"
+                        className="absolute -right-2 top-8 bottom-8 z-20 w-3 cursor-ew-resize touch-none rounded-full bg-white/0 hover:bg-yellow-400/50"
                         title="Drag to resize width"
                     />
                     <div
                         onPointerDown={beginResize('y')}
-                        className="absolute -bottom-1 left-6 right-6 h-2 cursor-ns-resize rounded-full bg-white/0 hover:bg-yellow-400/40"
+                        className="absolute -bottom-2 left-8 right-8 z-20 h-3 cursor-ns-resize touch-none rounded-full bg-white/0 hover:bg-yellow-400/50"
                         title="Drag to resize height"
                     />
                     <div
                         onPointerDown={beginResize('both')}
-                        className="absolute -bottom-1.5 -right-1.5 h-4 w-4 cursor-nwse-resize rounded-sm bg-yellow-400/70"
+                        className="absolute -bottom-2 -right-2 z-20 h-5 w-5 cursor-nwse-resize touch-none rounded-md bg-yellow-400/80 shadow-lg shadow-black/40"
                         title="Drag to resize"
                     />
+                    {isResizing && (
+                        <div className="pointer-events-none absolute -top-8 left-0 z-30 rounded-md border border-yellow-400/40 bg-black/80 px-2 py-1 font-mono text-[10px] text-yellow-300 shadow-lg">
+                            {config.viewport.width}×{config.viewport.height}
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

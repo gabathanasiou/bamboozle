@@ -102,6 +102,7 @@ export interface PreviewControls {
     outlines: boolean;
     showIssues: boolean;
     inspect: boolean;
+    resizeSelection: boolean;
     replayKey: number;
 }
 
@@ -263,6 +264,7 @@ export const DEFAULT_CONFIG: DesignerConfig = {
         outlines: false,
         showIssues: true,
         inspect: false,
+        resizeSelection: false,
         replayKey: 0,
     },
     notes: '',

@@ -57,9 +57,11 @@ export const PreviewSurface: React.FC = () => {
     const [diagnostics, setDiagnostics] = useState<DesignerDiagnostics | null>(null);
     const [selected, setSelected] = useState<DesignerElementInfo | null>(null);
     const [hoverRect, setHoverRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+    const [selectionRect, setSelectionRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
     const [error, setError] = useState<string | null>(null);
     const configRef = useRef(config);
     const diagnosticsRef = useRef(diagnostics);
+    const originalStylesRef = useRef<Map<string, Record<string, string>>>(new Map());
 
     useEffect(() => {
         configRef.current = config;
@@ -83,6 +85,32 @@ export const PreviewSurface: React.FC = () => {
         setDiagnostics(next);
         post({ type: 'designer:diagnostics', diagnostics: next });
     }, [post]);
+
+    const resetSelectedSize = useCallback(() => {
+        const selector = selected?.selector;
+        if (!selector) return;
+        const element = document.querySelector<HTMLElement>(selector);
+        if (!element) return;
+        const original = originalStylesRef.current.get(selector);
+        if (original) {
+            Object.entries(original).forEach(([key, value]) => {
+                (element.style as unknown as Record<string, string>)[key] = value;
+            });
+            originalStylesRef.current.delete(selector);
+        } else {
+            element.style.width = '';
+            element.style.height = '';
+            element.style.minWidth = '';
+            element.style.minHeight = '';
+            element.style.maxWidth = '';
+            element.style.maxHeight = '';
+            element.style.flex = '';
+            element.style.boxSizing = '';
+        }
+        const info = describeElement(element);
+        setSelected(info);
+        post({ type: 'designer:element', element: info });
+    }, [post, selected?.selector]);
 
     const exportPng = useCallback(async () => {
         const root = document.getElementById(ROOT_ID);
@@ -125,6 +153,9 @@ export const PreviewSurface: React.FC = () => {
                 case 'designer:export-png':
                     void exportPng();
                     break;
+                case 'designer:reset-element-size':
+                    resetSelectedSize();
+                    break;
                 case 'designer:reveal-element':
                     revealElement(message.selector);
                     break;
@@ -133,9 +164,12 @@ export const PreviewSurface: React.FC = () => {
             }
         };
         window.addEventListener('message', handleMessage);
-        post({ type: 'designer:ready' });
         return () => window.removeEventListener('message', handleMessage);
-    }, [exportPng, post, scan]);
+    }, [exportPng, post, resetSelectedSize, scan]);
+
+    useEffect(() => {
+        post({ type: 'designer:ready' });
+    }, [post]);
 
     useEffect(() => {
         sfx.setMuted(config.preview.muted);
@@ -158,8 +192,37 @@ export const PreviewSurface: React.FC = () => {
 
     useEffect(() => {
         setSelected(null);
+        setSelectionRect(null);
+        originalStylesRef.current.clear();
         post({ type: 'designer:element', element: null });
     }, [config.screen, post]);
+
+    useEffect(() => {
+        if (!config.preview.resizeSelection || !selected?.selector) {
+            setSelectionRect(null);
+            return;
+        }
+        const selector = selected.selector;
+        let frame = 0;
+        let last = '';
+        const update = () => {
+            const element = document.querySelector<HTMLElement>(selector);
+            if (!element) {
+                setSelectionRect(null);
+                frame = window.requestAnimationFrame(update);
+                return;
+            }
+            const rect = element.getBoundingClientRect();
+            const key = `${rect.x}:${rect.y}:${rect.width}:${rect.height}`;
+            if (key !== last) {
+                last = key;
+                setSelectionRect({ x: rect.x, y: rect.y, width: rect.width, height: rect.height });
+            }
+            frame = window.requestAnimationFrame(update);
+        };
+        update();
+        return () => window.cancelAnimationFrame(frame);
+    }, [config.preview.resizeSelection, selected?.selector]);
 
     useEffect(() => {
         if (!config.preview.inspect) {
@@ -175,6 +238,7 @@ export const PreviewSurface: React.FC = () => {
         const resolveTarget = (event: MouseEvent): HTMLElement | null => {
             const target = event.target;
             if (!(target instanceof HTMLElement)) return null;
+            if (target.closest('[data-designer-overlay]')) return null;
             if (!root.contains(target) || target === root) return null;
             return target;
         };
@@ -195,7 +259,9 @@ export const PreviewSurface: React.FC = () => {
             event.preventDefault();
             event.stopPropagation();
             const info = describeElement(target);
+            const rect = target.getBoundingClientRect();
             setSelected(info);
+            setSelectionRect({ x: rect.x, y: rect.y, width: rect.width, height: rect.height });
             setHoverRect(null);
             post({ type: 'designer:element', element: info });
         };
@@ -210,6 +276,72 @@ export const PreviewSurface: React.FC = () => {
             root.style.cursor = '';
         };
     }, [config.preview.inspect, post]);
+
+    const beginElementResize = (event: React.PointerEvent) => {
+        const selector = selected?.selector;
+        if (!selector) return;
+        const element = document.querySelector<HTMLElement>(selector);
+        if (!element) return;
+        event.preventDefault();
+        event.stopPropagation();
+        event.currentTarget.setPointerCapture?.(event.pointerId);
+
+        const rect = element.getBoundingClientRect();
+        const startX = event.clientX;
+        const startY = event.clientY;
+        const startWidth = rect.width;
+        const startHeight = rect.height;
+
+        if (!originalStylesRef.current.has(selector)) {
+            originalStylesRef.current.set(selector, {
+                width: element.style.width,
+                height: element.style.height,
+                minWidth: element.style.minWidth,
+                minHeight: element.style.minHeight,
+                maxWidth: element.style.maxWidth,
+                maxHeight: element.style.maxHeight,
+                flex: element.style.flex,
+                boxSizing: element.style.boxSizing,
+            });
+        }
+
+        const parentDisplay = element.parentElement
+            ? window.getComputedStyle(element.parentElement).display
+            : '';
+        element.style.boxSizing = 'border-box';
+        element.style.maxWidth = 'none';
+        element.style.maxHeight = 'none';
+        element.style.width = `${Math.round(startWidth)}px`;
+        element.style.height = `${Math.round(startHeight)}px`;
+        if (parentDisplay.includes('flex')) element.style.flex = '0 0 auto';
+
+        const previousCursor = document.body.style.cursor;
+        const previousSelect = document.body.style.userSelect;
+        document.body.style.cursor = 'nwse-resize';
+        document.body.style.userSelect = 'none';
+
+        const move = (moveEvent: PointerEvent) => {
+            const width = Math.max(24, startWidth + moveEvent.clientX - startX);
+            const height = Math.max(24, startHeight + moveEvent.clientY - startY);
+            element.style.width = `${Math.round(width)}px`;
+            element.style.height = `${Math.round(height)}px`;
+            const next = element.getBoundingClientRect();
+            setSelectionRect({ x: next.x, y: next.y, width: next.width, height: next.height });
+        };
+        const stop = () => {
+            window.removeEventListener('pointermove', move);
+            window.removeEventListener('pointerup', stop);
+            window.removeEventListener('pointercancel', stop);
+            document.body.style.cursor = previousCursor;
+            document.body.style.userSelect = previousSelect;
+            const info = describeElement(element);
+            setSelected(info);
+            post({ type: 'designer:element', element: info });
+        };
+        window.addEventListener('pointermove', move);
+        window.addEventListener('pointerup', stop, { once: true });
+        window.addEventListener('pointercancel', stop, { once: true });
+    };
 
     const modelResult = useMemo(() => {
         try {
@@ -318,6 +450,25 @@ export const PreviewSurface: React.FC = () => {
         }
     };
 
+    // Keep the real app subtree stable while inspector/overlay state changes.
+    // Without this, every hover/selection-rect update re-renders the game and
+    // remounts inner components, which drops live resize edits.
+    const previewContent = useMemo(
+        () => (modelResult.model ? renderModel(modelResult.model) : null),
+        [
+            modelResult.model,
+            config.app.showDevChrome,
+            config.language,
+            config.preview.replayKey,
+            config.screen,
+            config.view,
+            config.game.joinStep,
+            config.game.savedSession,
+            config.game.joinName,
+            config.game.codeError,
+        ],
+    );
+
     const reducedMotion = config.preview.reduceMotion ? 'always' : 'never';
 
     return (
@@ -361,9 +512,34 @@ export const PreviewSurface: React.FC = () => {
             ) : (
                 <PreviewErrorBoundary key={`${config.screen}-${config.preview.replayKey}`} onError={reportError}>
                     <MotionConfig reducedMotion={reducedMotion}>
-                        {modelResult.model ? renderModel(modelResult.model) : null}
+                        {previewContent}
                     </MotionConfig>
                 </PreviewErrorBoundary>
+            )}
+
+            {config.preview.resizeSelection && selectionRect && selected && (
+                <div
+                    data-designer-overlay="true"
+                    className="pointer-events-none fixed z-[9998] border-2 border-yellow-400 bg-yellow-400/5"
+                    style={{
+                        left: selectionRect.x,
+                        top: selectionRect.y,
+                        width: selectionRect.width,
+                        height: selectionRect.height,
+                    }}
+                >
+                    <div className="absolute -top-6 left-0 rounded border border-yellow-400/40 bg-black/80 px-1.5 py-0.5 font-mono text-[9px] text-yellow-300">
+                        {Math.round(selectionRect.width)}×{Math.round(selectionRect.height)} · drag
+                    </div>
+                    <button
+                        type="button"
+                        data-designer-overlay="true"
+                        onPointerDown={beginElementResize}
+                        onClick={(event) => { event.preventDefault(); event.stopPropagation(); }}
+                        className="pointer-events-auto absolute -bottom-2.5 -right-2.5 h-5 w-5 cursor-nwse-resize touch-none rounded-md border border-black/30 bg-yellow-400 shadow-lg"
+                        title="Resize selected element (preview only)"
+                    />
+                </div>
             )}
 
             {hoverRect && (

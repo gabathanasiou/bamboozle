@@ -57,6 +57,10 @@ INTRO/REVEAL/LEADER. Host-disconnected and room-closed overlays are player-side.
   preview even when the OS prefers reduced.
 - **Inspect:** overflow/clipped-text scan, outlines, hover inspector, issue markers,
   replay, reduced motion, mute.
+- **Live element resize:** toggle **Resize selected**, pick an element with the
+  inspector, then drag the yellow handle. Changes are preview-only and reset when
+  the scene remounts; use **Reset size** or copy the dimensions into an agent brief
+  so the agent can codify them.
 - **Share:** URL hash, copy JSON, paste JSON, copy agent brief, PNG export.
 
 ## Diagnostics

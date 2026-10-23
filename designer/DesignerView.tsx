@@ -50,6 +50,7 @@ export const DesignerView: React.FC = () => {
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [scanNonce, setScanNonce] = useState(0);
     const [exportNonce, setExportNonce] = useState(0);
+    const [resetElementNonce, setResetElementNonce] = useState(0);
     const [revealRequest, setRevealRequest] = useState<{ selector: string; nonce: number } | null>(null);
     const configRef = useRef(config);
     const diagnosticsRef = useRef(diagnostics);
@@ -230,6 +231,11 @@ export const DesignerView: React.FC = () => {
         setRevealRequest({ selector, nonce: Date.now() });
     }, []);
 
+    const resetElementSize = useCallback(() => {
+        setResetElementNonce((value) => value + 1);
+        flashStatus('Selected element size reset');
+    }, [flashStatus]);
+
     useEffect(() => {
         const bridge: DesignerBridge = {
             getConfig: () => configRef.current,
@@ -373,6 +379,7 @@ export const DesignerView: React.FC = () => {
                         onExportPng={exportPng}
                         onReplay={replay}
                         onRevealIssue={revealIssue}
+                        onResetElementSize={resetElementSize}
                         onClearOverrides={() => setConfig((current) => normaliseConfig({ ...current, overrides: clearCopyOverrides(current.overrides) }))}
                     />
                 </aside>
@@ -391,6 +398,7 @@ export const DesignerView: React.FC = () => {
                         }}
                         scanNonce={scanNonce}
                         exportNonce={exportNonce}
+                        resetElementNonce={resetElementNonce}
                         revealRequest={revealRequest}
                         onToggleInspect={() => update({ preview: { inspect: !config.preview.inspect } })}
                         onScan={scan}

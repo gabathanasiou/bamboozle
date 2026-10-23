@@ -62,6 +62,7 @@ interface ControlPanelProps {
     onExportPng: () => void;
     onReplay: () => void;
     onRevealIssue: (selector: string) => void;
+    onResetElementSize: () => void;
     onClearOverrides: () => void;
 }
 
@@ -86,6 +87,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     onExportPng,
     onReplay,
     onRevealIssue,
+    onResetElementSize,
     onClearOverrides,
 }) => {
     const [json, setJson] = useState('');
@@ -510,6 +512,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             <LabSection title="Inspect" subtitle="Overflow, outlines and element details" defaultOpen={false}>
                 <div className="grid grid-cols-2 gap-2">
                     <LabToggle label="Inspect" checked={config.preview.inspect} onChange={(inspect) => setPreview({ inspect })} />
+                    <LabToggle label="Resize selected" checked={config.preview.resizeSelection} onChange={(resizeSelection) => setPreview({ resizeSelection })} hint="Preview only; drag the yellow handle" />
                     <LabToggle label="Outlines" checked={config.preview.outlines} onChange={(outlines) => setPreview({ outlines })} />
                     <LabToggle label="Show issues" checked={config.preview.showIssues} onChange={(showIssues) => setPreview({ showIssues })} />
                     <LabToggle label="Reduce motion" checked={config.preview.reduceMotion} onChange={(reduceMotion) => setPreview({ reduceMotion })} />
@@ -551,7 +554,10 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     <div className="space-y-1.5 rounded-lg border border-sky-400/20 bg-sky-400/5 p-2">
                         <div className="flex items-center justify-between gap-2">
                             <span className="text-[10px] font-black uppercase tracking-wide text-sky-200">Selected element</span>
-                            <LabButton onClick={() => onCopyText(selectedElement.selector)} variant="ghost"><Copy size={11} /> Selector</LabButton>
+                            <div className="flex items-center gap-1">
+                                <LabButton onClick={() => onCopyText(selectedElement.selector)} variant="ghost"><Copy size={11} /> Selector</LabButton>
+                                <LabButton onClick={onResetElementSize} variant="ghost"><RotateCw size={11} /> Reset size</LabButton>
+                            </div>
                         </div>
                         <div className="break-all font-mono text-[9px] text-sky-200/70">{selectedElement.selector}</div>
                         <div className="grid grid-cols-2 gap-1 font-mono text-[9px] text-slate-400">
@@ -561,6 +567,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                             <span>scroll {selectedElement.scrollWidth}×{selectedElement.scrollHeight}</span>
                         </div>
                         {selectedElement.text && <div className="line-clamp-3 text-[10px] text-slate-500">{selectedElement.text}</div>}
+                        <div className="text-[9px] text-sky-300/50">Live size is preview-only; ask the agent to make it permanent.</div>
                     </div>
                 )}
             </LabSection>

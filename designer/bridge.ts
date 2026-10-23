@@ -237,6 +237,7 @@ export type ParentToPreviewMessage =
     | { type: 'designer:config'; config: DesignerConfig }
     | { type: 'designer:scan' }
     | { type: 'designer:export-png' }
+    | { type: 'designer:reset-element-size' }
     | { type: 'designer:reveal-element'; selector: string };
 
 export type PreviewToParentMessage =
