@@ -114,3 +114,158 @@ retired to `docs/ROADMAP-ARCHIVE.md` as **one line**; git history keeps the narr
   cache-hit audio only (no new TTS generation), `npm run lint` green.
 - **Relations:** depends on 4; follows `docs/TESTING.md` (integration probe, not a
   visual test).
+
+## 15. Host identity and room takeover (`[ ]`)
+
+- **Request:** the host's id is broadcast in `GameState.hostId` and accepted as the only proof of host, so any player can force host grace and rejoin as host — taking over, killing, or locking the owner out of their room (audit F-02).
+- **Approach:** issue a server-generated 128-bit host secret when the room is created; store only its hash in room meta and return the secret to the creating socket; require it on `joinRoom` host reclaim; never put the host id or secret in broadcast state; require the same token before `createRoom` can grace or close another room for that host. Files: `workers/bamboozle-rooms/src/room.ts`, `directory.ts`, `services/gameService.ts`, `types.ts`.
+- **Verify:** worker test — a player who knows `hostId` cannot reclaim; the host with the secret reclaims inside grace; a third-party `createRoom` with the victim hostId cannot demote the host; a two-browser takeover attempt fails; the normal reconnect flow still passes.
+- **Relations:** relates 16, 17; blocks host-path TTS abuse in 18; depends on 4 for deployment.
+
+## 16. Room action authorization and player-id validation (`[ ]`)
+
+- **Request:** `playerEvent` relays any event type into the host reducer and trusts `payload.playerId`, so players can start/restart/kick, change rounds, and forge lies or votes; `__proto__` ids pollute host maps (audit F-03, F-17).
+- **Approach:** allowlist player-originated event types in the Directory/room DO (`JOIN_ROOM`, `SUBMIT_LIE`, `SUBMIT_VOTE`, `SUBMIT_AUDIENCE_VOTE`, emotes); stamp `senderId` from the socket attachment and overwrite payload ids; make the host reducer reject host-only types on the player channel; validate ids against `^[A-Za-z0-9_-]{1,50}$` and reject `__proto__`/`constructor`/`prototype`; use null-prototype maps.
+- **Verify:** worker test sends `START_GAME`/`RESTART_GAME`/`REMOVE_PLAYER` via `playerEvent` → dropped; a forged vote for another player → rejected; a `__proto__` join does not touch `Object.prototype`; normal player actions still work; the e2e round passes.
+- **Relations:** relates 15, 17.
+
+## 17. Room state read authorization and enumeration (`[ ]`)
+
+- **Request:** `requestState` returns any room's full state by 4-letter code without joining; read events are unthrottled; the 456,976 codes are cheap to scan (audit F-04).
+- **Approach:** require `attachment.roomCode === code` for `requestState`; add `checkRoom`/`getRoomsByHost`/`requestState` to the limiter and add a per-IP limit; strip `hostId` from all outgoing state; consider 5–6 character codes or signed join links later.
+- **Verify:** an unjoined socket gets null/403; a joined socket reads its own room; more than 20 reads/10s returns `RATE_LIMITED`; reconnect and `JOIN LAST GAME` still work.
+- **Relations:** relates 15, 19; blocks targeting in 16.
+
+## 18. TTS cost abuse (`[ ]`)
+
+- **Request:** `POST /api/tts` is public, unauthenticated, unthrottled and unused by the client; unique text can run up Google TTS/GCS spend (audit F-05).
+- **Approach:** remove the route in production (404 unless an explicit flag plus a host token) or require a short-lived host token; add per-IP and global character budgets; set a hard Google TTS quota and a GCP budget alert; keep the MD5 cache key untouched. Files: `workers/bamboozle-rooms/src/index.ts`, `src/tts.ts`, `wrangler.toml`.
+- **Verify:** anonymous POST → 404/401; an authorised host request returns audio; repeated unique text trips the budget; the cache hit still works; `npm run test:worker` and `scripts/smoke.mjs`.
+- **Relations:** relates 19, 23.
+
+## 19. Abuse and availability caps (`[ ]`)
+
+- **Request:** only a per-socket 20/10s limit exists (reset on reconnect); `createRoom` is capped per caller-supplied hostId; there is no per-IP/global socket or room cap; free-plan quota exhaustion stops every room (audit F-06).
+- **Approach:** Cloudflare rate-limit rules/Turnstile per IP; per-IP socket and create caps; add read events to the limiter; a server-side player cap; a periodic sweep instead of create-time only; cap broadcast state size.
+- **Verify:** scripted socket/hostId churn gets 429; a legitimate 6-player, 2-room session is unaffected; the load smoke stays under the free-plan budget.
+- **Relations:** depends on 4; relates 18, 28.
+
+## 20. Legacy server hardening or retirement (`[ ]`)
+
+- **Request:** `server/` is the documented rollback but accepts `gameStateUpdate`/`hostEvent`/`requestNarrator` from any socket, uses `cors: '*'`, and mounts unauthenticated `/api/admin/*` when `NODE_ENV !== 'production'` (audit F-07).
+- **Approach:** add `rooms[code]?.hostSocketId === socket.id` guards; require an `ADMIN_TOKEN` and `NODE_ENV=production` for admin; remove or protect `/api/tts`; otherwise retire `server/` once item 4 is closed. Keep it as rollback only.
+- **Verify:** a socket integration test proves unauth state updates are ignored; unauth admin → 401; unauth TTS → 401/404; the rollback smoke passes.
+- **Relations:** depends on 4 (retire after cutover); relates 26.
+
+## 21. CI and typecheck gate (`[ ]`)
+
+- **Request:** there is no CI, no branch protection and Netlify builds only; `tsc --noEmit` already fails and 56 tests never gate a deploy (audit F-08).
+- **Approach:** add `.github/workflows/ci.yml` (`npm ci`, lint, `tsc --noEmit`, unit, worker typecheck/tests, build, Playwright) on PR/push; require checks and a PR on `main`; delete or ignore `data/_oldquestions.ts`, exclude `workers/**` from the root tsconfig, fix the stale i18n import.
+- **Verify:** a PR with a failing test/typecheck is blocked; `main` is green; Netlify production only follows a green `main`.
+- **Relations:** enables the gates in 30, 22, 32.
+
+## 22. Build Tailwind and add CSP/security headers (`[ ]`)
+
+- **Request:** the UI is styled at runtime by an unpinned `cdn.tailwindcss.com` script with no SRI; there is no CSP/nosniff/frame/referrer header set; the built CSS is 954 B of dead directives (audit F-09).
+- **Approach:** register `@tailwindcss/vite`, switch `index.css` to `@import "tailwindcss"`, delete the CDN script and the unused `esm.sh` import map; add Netlify `[[headers]]` with CSP, `frame-ancestors 'none'`, `nosniff`, `Referrer-Policy`, `Permissions-Policy`, and immutable `/assets/*` caching.
+- **Verify:** production CSS contains utilities with the CDN blocked; live headers are present; no CSP violations; the game renders on web and Android; `npm run build`.
+- **Relations:** relates 21 (assert no CDN host in the bundle).
+
+## 23. Cost alerts, error tracking and uptime (`[ ]`)
+
+- **Request:** there are no budgets, anomaly alerts, error tracker, external uptime check, alert route or status page; the current production outage went unnoticed (audit F-10).
+- **Approach:** GCP budget + Pub/Sub alert and a hard TTS quota; Cloudflare usage notifications; Sentry for browser and Worker; an external synthetic that creates/joins a room and checks a TTS cache hit; alerts to a human; a hosted status page.
+- **Verify:** a forced Worker 500 and a failed synthetic both page; the budget threshold fires in a test project; the dashboard shows the failure.
+- **Relations:** relates 18, 19, 26.
+
+## 24. Privacy policy, terms and retention (`[ ]`)
+
+- **Request:** no privacy policy or terms exist; player names are sent to Google TTS and audio persists publicly; there is no deletion path (audit F-11).
+- **Approach:** publish privacy + terms matching the real flow (names, narration text, Google TTS/GCS, localStorage ids, retention), link them in Settings and the store listing, document subprocessors, and add a deletion/retention rule for narration audio.
+- **Verify:** pages are live and linked; a deletion request removes the audio; Play data-safety answers match; legal review recorded.
+- **Relations:** blocks 9; relates 35.
+
+## 25. Retire the client-trusted host-token design (`[ ]`)
+
+- **Request:** `docs/BILLING_INTEGRATION.md` still specifies `POST /api/get-host-token` signing a host JWT from a client `userId` without verifying `rcToken`, and calls trusting the client acceptable; it must not be implemented (audit F-12).
+- **Approach:** add a prominent "superseded — do not implement" banner to `docs/BILLING_INTEGRATION.md` §4.3 and `docs/ENTITLEMENT_SYSTEM.md`, point at item 5, and remove the snippet so a future agent cannot copy it.
+- **Verify:** `rg 'get-host-token|trusting the client' docs` returns only the banner; item 5's token flow is the only documented path.
+- **Relations:** superseded by 5; blocks 8.
+
+## 26. Rollback and disaster recovery (`[ ]`)
+
+- **Request:** the documented rollback points at a Railway app that returns 404; there is no Worker version rollback, migration-down path, RTO/RPO or restore exercise (audit F-13).
+- **Approach:** document and rehearse `wrangler rollback`/`wrangler versions`; pin deploy artifacts; restore Railway config + health check or retire it; write per-dependency RTO/RPO and a restore drill; record the last exercise date.
+- **Verify:** roll a canary Worker version back; restore one GCS object; the timed drill meets the documented RTO; docs updated.
+- **Relations:** depends on 4; relates 20, 23.
+
+## 27. Secret and service-account hygiene (`[ ]`)
+
+- **Request:** a live service-account key sits in plaintext (mode 644) with a duplicate in `.dev.vars`, uses the broad `cloud-platform` scope, and has no rotation owner or cadence (audit F-14).
+- **Approach:** move the key to a secret manager/keychain, `chmod 600`, delete the duplicate, scope a custom role to get/create/update on one bucket, rotate, and document owner/cadence; prefer WIF/OIDC over a long-lived key.
+- **Verify:** the old key is revoked; the Worker works with the new secret; `git status` shows no key; rotation is recorded.
+- **Relations:** relates 33, 23.
+
+## 28. Directory DO scale and failure isolation (`[ ]`)
+
+- **Request:** one global Directory DO owns every socket and every broadcast scans all sockets; a hot room slows every room and the DO is a shared single point of failure (audit F-15).
+- **Approach:** move socket ownership into each `BambooRoom` DO or shard Directory by room-code prefix; cap room size and connections; add the load test before launch.
+- **Verify:** a 100/500/1000-room ramp and a reconnect storm stay within CPU/error budgets; one hot room does not move other rooms' p95; free/paid limits are documented.
+- **Relations:** depends on 19; relates 29.
+
+## 29. Room index resilience (`[ ]`)
+
+- **Request:** any non-OK room RPC (including a transient 503) makes `checkRoomExists` delete the index row, so a live room becomes unjoinable (audit F-16).
+- **Approach:** delete only on a real 404; retry 5xx/timeouts with backoff; distinguish "unavailable" from "not found"; keep the stored room code on 5xx.
+- **Verify:** fault-inject a 503 → the row remains and the retry succeeds; a 404 still deletes; reconnect works.
+- **Relations:** relates 28.
+
+## 30. Scoring and phase tests (`[ ]`)
+
+- **Request:** `gameService.ts` has 0% unit coverage and the round e2e asserts only that a heading is visible, so wrong points, multipliers and ties ship silently (audit F-18).
+- **Approach:** extract pure `scoreRound`/`advancePhase` modules; table-test truth, lie, 2x/3x, ties, duplicate lies, audience and no-vote cases; set `coverage.include` with a floor; add score assertions to e2e.
+- **Verify:** coverage includes `gameService`; a deliberately broken multiplier fails a test; e2e asserts exact points; `npm run test:unit`.
+- **Relations:** depends on 21; relates 11.
+
+## 31. Staging isolation (`[ ]`)
+
+- **Request:** there is no staging; every preview shares one Worker/DO/KV and the production GCS bucket, so preview tests pollute production data (audit F-19).
+- **Approach:** Wrangler `[env.staging]` with separate DO/KV/bucket; a staging Netlify context; stop committing `.env`; fail the build when `VITE_SERVER_URL` is absent.
+- **Verify:** staging create/join works and production is untouched; new audio lands in the staging bucket; a missing env var fails the build.
+- **Relations:** depends on 4; relates 26.
+
+## 32. Accessibility (`[ ]`)
+
+- **Request:** pinch zoom is blocked, labels are unassociated, clickable divs are keyboard-inaccessible and modals lack dialog semantics; there is no axe gate (audit F-20).
+- **Approach:** remove `user-scalable=no`; use labelled `<button>`/`<input>`; add `role="dialog"`/`aria-modal`/focus trap/Escape; add axe checks to Playwright; target WCAG 2.1 AA.
+- **Verify:** axe reports no serious violations; keyboard-only play through join/lobby/round; VoiceOver/TalkBack pass; the design lab covers all phases.
+- **Relations:** relates 13/14; depends on 21 for the gate.
+
+## 33. Account ownership and bus factor (`[ ]`)
+
+- **Request:** every control plane (GitHub, Netlify, Cloudflare, GCP) is a personal account with one maintainer; account loss means no deploy, rotation or recovery (audit F-21).
+- **Approach:** move to organisation-owned accounts, add a second maintainer, put secrets in a shared vault, and write an access/incident runbook with a recovery drill.
+- **Verify:** a second person can deploy and rotate a secret without the founder; the recovery drill is recorded; the access list is reviewed.
+- **Relations:** relates 27, 26.
+
+## 34. Mobile navigation and join errors (`[ ]`)
+
+- **Request:** Android back exits from join/lobby/game, a 10s ack timeout is silent, and raw worker codes reach the UI (audit F-22).
+- **Approach:** make back state-aware and confirm exit while in a room; surface the timeout with a retry; map `ALREADY_IN_ROOM`/`INVALID_PLAYER_ID` to human copy; add a loading state to Join.
+- **Verify:** hardware back from every view; an offline/timeout join shows a retry; no raw code in the UI; `npm run android:build`.
+- **Relations:** relates 13/14.
+
+## 35. GCS bucket listing and lifecycle (`[ ]`)
+
+- **Request:** `gs://bamboozle-audio-assets` is anonymously listable (3,185 objects) and has no lifecycle rule; public object read is intentional, list is not (audit F-23).
+- **Approach:** remove the `allUsers` list permission, keep object-level read or move to signed URLs/CDN, add a lifecycle rule for orphaned audio, and audit bucket IAM.
+- **Verify:** anonymous list → 403; a known object URL still plays; the lifecycle dry run lists only orphans; the cache hit still works.
+- **Relations:** relates 24, 27.
+
+## 36. Dependency automation and upgrades (`[ ]`)
+
+- **Request:** upgrades are ad hoc, Vite/TypeScript/framer-motion are two majors behind, and `npm audit` reports 3 root + 2 worker moderate dev-only advisories (audit F-24).
+- **Approach:** add Renovate/Dependabot monthly; upgrade Vite 8, TypeScript 7 and framer-motion 14; move `@capacitor/cli` to devDependencies; keep the audit clean.
+- **Verify:** `npm audit` has no high/critical; build, unit, worker and e2e pass; no runtime-reachable advisory.
+- **Relations:** relates 21.
+
