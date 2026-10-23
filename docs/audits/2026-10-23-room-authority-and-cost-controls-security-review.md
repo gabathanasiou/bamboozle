@@ -3,8 +3,10 @@
 > Agent-assisted targeted audit of commit `0ee030e` (branch `security-tranche`).
 > Read-only review: no file was modified by the audit pass. Findings found during
 > verification were remediated in `ec036c1` and `0ee030e`; this report covers the
-> final tip. **This is not a penetration test** — findings come from source,
-> configuration and tool output, not live exploitation.
+> final tip. **Post-review remediation:** F-01 was fixed in `405c808`
+> (per-player resume secret + socket binding); the finding is retained as the
+> verified pre-fix issue. **This is not a penetration test** — findings come from
+> source, configuration and tool output, not live exploitation.
 > Standards referenced: OWASP ASVS 5.0.0, OWASP Top 10.
 > Prior audit: `docs/audits/2026-10-23-security-audit.md` (2026-10-23).
 
@@ -16,7 +18,7 @@
 
 | # | Finding | Severity | Priority | Blocks |
 |---|---|---|---|---|
-| F-01 | A second socket can claim an existing player id and act/kick as that player | High | P0 | first paying customer |
+| F-01 | A second socket can claim an existing player id and act/kick as that player — **fixed in `405c808`** | High | P0 | first paying customer |
 | F-02 | `getRoomsByHost` is unauthenticated; host ids can be discovered and squatted | Medium | P2 | scale / privacy |
 | F-03 | Global socket/room caps are saturable; create rate is in-memory | Medium | P2 | scale |
 | F-04 | A lost `createRoom` ack strands the host secret and wipes the identity | Low | P3 | hardening |
@@ -27,10 +29,10 @@
 **Verdict:** The batch closes the original F-02/F-03/F-04/F-05/F-12 gaps and
 materially improves cost control: `/api/tts` is off by default, both TTS paths
 share a daily/per-IP character budget, and room/socket/create/player/state caps
-plus a sweep alarm are in place. It is **not** safe to onboard paying customers
-until F-01 is fixed: the player path still treats a client-supplied `playerId` as
-identity, so a participant can impersonate another player. F-02/F-03 and the
-external GCP budget/alert are the next priorities.
+plus a sweep alarm are in place. F-01 was fixed after the review (`405c808`), so
+the player path is now bound to a per-player resume secret and socket. The
+remaining exposure is F-02/F-03 and the external GCP budget/alert; F-02 should be
+fixed before growth makes host enumeration useful.
 
 ## 2. Scope & method
 
@@ -79,7 +81,7 @@ external GCP budget/alert are the next priorities.
 
 ## 4. Findings
 
-### F-01 — Player impersonation via duplicate `joinRoom` · High · P0 · verified
+### F-01 — Player impersonation via duplicate `joinRoom` · High · P0 · fixed in `405c808`
 
 - **Where:** `workers/bamboozle-rooms/src/directory.ts:334-380`,
   `workers/bamboozle-rooms/src/room.ts:259-340,350-367,403-413`,
@@ -111,6 +113,20 @@ external GCP budget/alert are the next priorities.
 - **Effort:** M.
 - **Verification:** Independent verifier confirmed the full chain and the kick;
   lead re-read `directory.ts:334-380`, `room.ts:259-367,403-413`. Confidence 9.
+
+**Post-review remediation (`405c808`):** first join mints a per-player 128-bit
+resume secret (hash in the player row); every later join of that id must present
+it. The row stores `socket_id`, and `playerEvent`/`disconnect` are accepted only
+from that socket; a reconnect closes the replaced socket via
+`/internal/close-socket`. A second socket without the secret gets
+`PLAYER_SECRET_REQUIRED`; the existing disconnect no longer kicks a live player.
+Tests: 48 worker tests, 15-step smoke, 3 e2e pass.
+
+**Residual (Low):** a player id known from another room can be pre-registered
+before the victim's first join in a new room; the victim then gets
+`PLAYER_SECRET_REQUIRED` and the client resets to a new id. Server-issued player
+ids (or a device-bound identity) would remove this; it is a DoS/identity loss, not
+impersonation.
 
 ### F-02 — Unauthenticated `getRoomsByHost` and host-id squatting · Medium · P2 · verified
 
@@ -254,8 +270,8 @@ are not open findings:
 | AUTH-02 | ⬜ | — | No email/password login |
 | AUTH-04 | ⬜ | — | No MFA/recovery; phase 2 entitlement only |
 | AUTH-05 | ⬜ | — | No user session layer; room secrets are per-room |
-| AUTH-09 | 🟡 | `protocol.ts:23-45,180-185`; `room.ts:403-456`; `gameService.ts:1959-1962` | Host/player/audience gates exist; player identity is self-asserted (F-01) |
-| AUTH-10 | 🟡 | `directory.ts:334-380`; `room.ts:259-340` | `requestState` is member-only, but a duplicate join grants the same state |
+| AUTH-09 | 🟡 | `protocol.ts:23-45,180-185`; `room.ts:403-456`; `gameService.ts:1959-1962` | Host/player/audience gates exist; player identity is secret-bound since `405c808`; pre-registration squat remains (F-01 residual) |
+| AUTH-10 | 🟡 | `directory.ts:334-380`; `room.ts:259-340` | `requestState` is member-only; duplicate join now requires the player secret |
 | AUTH-11 | 🟡 | `directory.ts:581-599`; `room.ts:606-610` | Per-room DO isolation holds; cross-room host discovery via `getRoomsByHost` (F-02) |
 | AUTH-13 | 🟡 | `protocol.ts:137-163`; `directory.ts:217-247,697-713` | Per-socket and per-IP limits; `joinRoom`/host-secret attempts still reset per socket |
 
@@ -392,7 +408,7 @@ are not open findings:
 
 | Priority | Item | Finding(s) | Effort |
 |---|---|---|---|
-| P0 | Server-issued per-player resume secret + socket binding; host kick RPC | F-01 | M |
+| P0 | ~~Server-issued per-player resume secret + socket binding; host kick RPC~~ — done in `405c808` | F-01 | M |
 | P1 | Require the host secret on `getRoomsByHost`; stop deriving host id from client input | F-02 | M |
 | P1 | Configure the GCP hard TTS quota and budget/alert; record ids in `DEPLOYMENT.md` | OPS-18 | S |
 | P1 | Add the CI/typecheck gate before any external launch | OPS-03 / item 21 | S–M |
@@ -418,8 +434,9 @@ are not open findings:
 
 ## 9. Re-audit guidance
 
-- Fully re-verify F-01/F-02 after the player-secret/socket-binding and
-  `getRoomsByHost` changes; re-run the duplicate-join and host-squat probes.
+- Fully re-verify F-01 after `405c808` with a second-socket/wrong-secret probe and
+  the residual pre-registration race; re-run the duplicate-join and host-squat
+  probes. F-02 is still open.
 - Re-check OPS-18 only after the GCP console evidence is recorded.
 - Carry forward F-03/F-04/F-05/F-06/F-07 with this date if untouched.
 - Re-run the deterministic passes (npm audit, secret scan, worker/unit/e2e/smoke)
