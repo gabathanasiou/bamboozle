@@ -227,10 +227,3 @@ retired to `docs/ROADMAP-ARCHIVE.md` as **one line**; git history keeps the narr
 - **Verify:** `npm audit` has no high/critical; build, unit, worker and e2e pass; no runtime-reachable advisory.
 - **Relations:** relates 21.
 
-## 37. Player identity binding and resume secrets (`[ ]`)
-
-- **Request:** a second socket can join a room with an existing player's id (ids are keys in broadcast `GameState.players`), send `playerEvent` as that player, and kick them on socket close; the host secret protects only the host (security review F-01, 2026-10-23).
-- **Approach:** issue a server-issued 128-bit per-player resume secret on first join; store only its hash in the player row and return it in the join ack. Require a matching secret on every later join of that id, bind `socket_id` to the player row, and accept `disconnect`/`playerEvent` only from that socket. Close the replaced socket via Directory `/internal/close-socket`. Client stores the secret per room and sends it on rejoin. Files: `workers/bamboozle-rooms/src/room.ts`, `directory.ts`, `protocol.ts`, `services/gameService.ts`, tests/smoke.
-- **Verify:** a second socket without the secret gets `PLAYER_SECRET_REQUIRED`; a wrong secret fails; a reconnect with the secret works; a different socket cannot send `playerEvent` or kick the player; a two-browser impersonation attempt fails; normal rejoin/e2e/smoke pass.
-- **Relations:** fixes review F-01; relates 16, 17.
-
