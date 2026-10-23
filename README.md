@@ -15,7 +15,7 @@ View your app in AI Studio: https://ai.studio/apps/drive/1PPv_q90q-7H5lO9aANaXaV
 - [Android & Capacitor](docs/CAPACITOR_ANDROID.md): Guide for the native Android app, bundling, and deployment.
 - [Game Systems](docs/GAME_SYSTEMS.md): Explanation of the game loop, phases, and logic.
 - [Networking](docs/NETWORKING.md): Native-WebSocket envelope, events, acks and reconnect lifecycle.
-- [Deployment](docs/DEPLOYMENT.md): Cloudflare Worker + Netlify, secrets, preview and Railway rollback.
+- [Deployment](docs/DEPLOYMENT.md): Cloudflare Worker + Netlify, secrets, deploy and rollback.
 - [Server Hardening](docs/SERVER_HARDENING.md): Room caps, rate limits, sanitisation, alarms and free-tier limits.
 - [Best Practices](docs/BEST_PRACTICES.md): Coding standards and guidelines.
 - [Multiplayer Plan](docs/MULTIPLAYER_PLAN.md): The master roadmap for Online Friends Mode and monetisation.
@@ -34,7 +34,7 @@ View your app in AI Studio: https://ai.studio/apps/drive/1PPv_q90q-7H5lO9aANaXaV
    `npm install`
 2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
 3. Start the realtime Worker in `workers/bamboozle-rooms/` (`npm install && npm run dev`) and the app (`npm run dev`); the client defaults to `http://localhost:8787`.
-4. For the legacy Railway path, enable **Settings → Developer Mode → Use Local Server** and point it at `http://localhost:3001`.
+4. For the legacy Express/Socket.IO server, enable **Settings → Developer Mode → Use Local Server** and point it at `http://localhost:3001`.
 
 ---
 

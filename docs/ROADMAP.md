@@ -36,9 +36,10 @@ retired to `docs/ROADMAP-ARCHIVE.md` as **one line**; git history keeps the narr
 - **Verify:** plan §12 checklist — two browsers + phone, full round, host/player
   reconnect grace, 2/3-room caps, rate limit, TTS cache hit, iOS Safari audio,
   Netlify deploy preview, `npm run build`.
-- **Status (2026-10-22):** Worker + Preview built; `wrangler dev`/deployed smoke, 3
-  Playwright room specs and WebKit iPhone emulation pass. Remaining before closing:
-  production cutover, real-phone iOS check, and the 48h monitoring window.
+- **Status (2026-10-23):** Worker + production cutover done; `wrangler dev`/deployed
+  smoke, 3 Playwright room specs, WebKit iPhone emulation and the live Netlify host
+  flow pass. Remaining before closing: real-phone iOS check and the 48h monitoring
+  window.
 - **Relations:** blocks 5 and 10; supersedes Railway in `docs/DEPLOYMENT.md`.
 
 ## 5. Paid host entitlements — phase 2 (`[ ]`)

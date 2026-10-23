@@ -1,6 +1,6 @@
 # Bamboozle Deployment Guide
 
-Status: phase 1 — Cloudflare Worker is live for preview; Railway remains the production rollback until the rollout in `docs/CLOUDFLARE_MIGRATION_PLAN.md` §13.
+Status: phase 1 — production realtime and TTS run on the Cloudflare Worker; Railway is decommissioned. Migration history is in `docs/CLOUDFLARE_MIGRATION_PLAN.md` §13.
 
 ## Deployed pieces
 
@@ -9,7 +9,7 @@ Status: phase 1 — Cloudflare Worker is live for preview; Railway remains the p
 | Frontend | Netlify (`bamboozlegame`) | `VITE_SERVER_URL` baked at build time |
 | Realtime + TTS | Cloudflare Worker `bamboozle-rooms` | Workers Free + Durable Objects (SQLite) |
 | Audio cache | `gs://bamboozle-audio-assets` | 3,159 existing MP3s; do not change the MD5 key |
-| Rollback | Railway `server/` | Keep until production cutover |
+| Rollback | Worker deployments | `npx wrangler rollback`; Railway is decommissioned |
 
 - Worker: `https://bamboozle-rooms.gabathanasiou.workers.dev`
 - Health: `/health`, version: `/api/version`, TTS: `POST /api/tts`, sockets: `/ws`
@@ -68,18 +68,21 @@ node -e "const fs=require('fs');process.stdout.write(JSON.stringify(JSON.parse(f
 
 ## Netlify
 
-Set the **deploy-preview** context (production stays on Railway for now):
+Production, branch deploys, deploy previews and local builds all use the Worker URL:
 
 ```bash
-npx netlify env:set VITE_SERVER_URL https://bamboozle-rooms.gabathanasiou.workers.dev --context deploy-preview
-npm run build                           # with VITE_SERVER_URL set
-npx netlify deploy --dir=dist --no-build # draft preview URL
+npx netlify env:set VITE_SERVER_URL https://bamboozle-rooms.gabathanasiou.workers.dev \
+  --context production branch-deploy deploy-preview dev
+npm run build
+npx netlify deploy --prod --dir=dist --no-build
 ```
 
-`netlify deploy --build` may rebuild without your shell env; either export
-`VITE_SERVER_URL` for the build or set it in the Netlify UI. The preview origin
-(`https://<deploy-id>--bamboozlegame.netlify.app`) is already allowed by the
-Worker's `ALLOWED_ORIGINS` pattern.
+`VITE_SERVER_URL` is baked at build time: after changing it, rebuild and
+redeploy, or the old URL stays in the bundle. `netlify deploy --build` may
+rebuild without your shell env; either export `VITE_SERVER_URL` for the build or
+set it in the Netlify UI. Both the production origin and the preview pattern
+(`https://<deploy-id>--bamboozlegame.netlify.app`) are already allowed by the
+Worker's `ALLOWED_ORIGINS`.
 
 CORS/WS origins are never `*` in production. Add a custom domain to
 `ALLOWED_ORIGINS` before pointing DNS at it.
@@ -94,11 +97,13 @@ CORS/WS origins are never `*` in production. Add a custom domain to
 
 ## Rollout / rollback
 
-1. Preview (done): Worker deployed alongside Railway, Netlify deploy-preview points at it.
-2. Run the manual checklist in `docs/CLOUDFLARE_MIGRATION_PLAN.md` §12.
-3. Switch production `VITE_SERVER_URL` to the Worker; monitor `wrangler tail` + analytics for 48h.
-4. After a stable week, retire the Railway service and archive `server/` (do not delete history).
-5. Rollback at any time before step 4: set `VITE_SERVER_URL` back to the Railway URL and redeploy Netlify.
+1. Preview (done): Worker deployed, Netlify deploy-preview points at it.
+2. Manual checklist (done): see `docs/CLOUDFLARE_MIGRATION_PLAN.md` §12.
+3. Production cutover (done 2026-10-23): Netlify production `VITE_SERVER_URL` is the Worker.
+4. After a stable week, archive the legacy `server/` directory (do not delete history).
+5. Rollback: redeploy the previous Worker version
+   (`cd workers/bamboozle-rooms && npx wrangler rollback`). Railway is
+   decommissioned and cannot be used as a rollback target.
 
 ## Verification
 

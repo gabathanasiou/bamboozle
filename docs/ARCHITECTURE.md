@@ -15,7 +15,7 @@ Bamboozle is a real-time multiplayer party game inspired by Jackbox Games. Playe
 - **Animation / 3D**: Framer Motion + React Three Fiber avatars
 - **Native wrapper**: Capacitor (Android)
 - **Hosting**: Netlify (frontend), Cloudflare (realtime), Google Cloud Storage (audio)
-- **Rollback**: Railway/Express/Socket.IO in `server/` until the phase-1 checklist is signed off
+- **Rollback**: previous Worker deployment (`npx wrangler rollback`); legacy Express/Socket.IO code remains in `server/`
 
 ## Target Topology
 
@@ -72,5 +72,5 @@ Legacy, local-development only. It still targets the Express `/api/admin/*` rout
 - `services/` — game state, audio, realtime adapter.
 - `views/`, `components/` — host/player UI.
 - `workers/bamboozle-rooms/` — Worker, DOs, TTS, worker tests, smoke script.
-- `server/` — legacy Railway rollback path (do not edit during phase 1).
+- `server/` — legacy Express/Socket.IO implementation, kept for local fallback only.
 - `docs/` — architecture, networking, hardening, deployment, testing.
