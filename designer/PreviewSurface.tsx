@@ -302,25 +302,6 @@ export const PreviewSurface: React.FC = () => {
         }
     }, [applyEditState, commitEditHistory, post, postEditHistory, refreshResizeChanges, selected?.selector]);
 
-    const clearLiveEdits = useCallback(() => {
-        if (editHistoryTimerRef.current) {
-            window.clearTimeout(editHistoryTimerRef.current);
-            editHistoryTimerRef.current = null;
-        }
-        applyEditState(new Map());
-        editStateRef.current.clear();
-        resizeBaselinesRef.current.clear();
-        originalStylesRef.current.clear();
-        resizeChangesRef.current.clear();
-        editHistoryRef.current = [new Map()];
-        editHistoryIndexRef.current = 0;
-        setSelected(null);
-        setSelectionRect(null);
-        post({ type: 'designer:element', element: null });
-        post({ type: 'designer:resize-changes', changes: [] });
-        postEditHistory();
-    }, [applyEditState, post, postEditHistory]);
-
     const resetSelectedSize = useCallback(() => {
         const selector = selected?.selector;
         if (!selector) return;
@@ -417,10 +398,6 @@ export const PreviewSurface: React.FC = () => {
             switch (message.type) {
                 case 'designer:config': {
                     const next = normaliseConfig(message.config);
-                    const previous = configRef.current;
-                    if (next.viewport.width !== previous.viewport.width || next.viewport.height !== previous.viewport.height) {
-                        clearLiveEdits();
-                    }
                     configRef.current = next;
                     setConfig(next);
                     setError(null);
@@ -454,7 +431,7 @@ export const PreviewSurface: React.FC = () => {
         };
         window.addEventListener('message', handleMessage);
         return () => window.removeEventListener('message', handleMessage);
-    }, [clearLiveEdits, exportPng, post, redoEdit, resetAllSizes, resetSelectedSize, scan, setSelectedStyle, undoEdit]);
+    }, [exportPng, post, redoEdit, resetAllSizes, resetSelectedSize, scan, setSelectedStyle, undoEdit]);
 
     useEffect(() => {
         post({ type: 'designer:ready' });

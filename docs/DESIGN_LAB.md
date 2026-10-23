@@ -67,6 +67,10 @@ INTRO/REVEAL/LEADER. Host-disconnected and room-closed overlays are player-side.
   toggle it off for a one-off. A grouped edit is one undo step. Changes are
   preview-only and reset when the scene remounts; use **Reset size**,
   **Reset all**, or **Copy resize request** so the agent can codify them.
+  Live edits persist across viewport changes so you can compare the same adjusted
+  design at another size. Use **Reset all** to return to the natural responsive
+  layout; an element that stays fixed at a new viewport is an active inline edit,
+  not a responsive bug.
 - **Undo / redo:** header buttons and Cmd/Ctrl+Z / Cmd/Ctrl+Shift+Z (Ctrl+Y also
   redoes). This covers **live design edits only** — element box resize, font size,
   line height, grouped similar-element edits, reset size, and reset all. It

@@ -554,6 +554,10 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 <LabButton onClick={onRandomize} fullWidth>
                     <Dice5 size={12} /> Randomize state
                 </LabButton>
+                <div className="text-[9px] leading-relaxed text-slate-600">
+                    Live element edits persist when you switch viewport, so you can compare the same
+                    adjusted design at another size. Use Reset all to return to the natural responsive layout.
+                </div>
             </LabSection>
 
             <LabSection title="Inspect" subtitle="Overflow, outlines and element details" defaultOpen={false}>
