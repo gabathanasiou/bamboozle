@@ -122,13 +122,6 @@ retired to `docs/ROADMAP-ARCHIVE.md` as **one line**; git history keeps the narr
 - **Verify:** a socket integration test proves unauth state updates are ignored; unauth admin → 401; unauth TTS → 401/404; the rollback smoke passes.
 - **Relations:** depends on 4 (retire after cutover); relates 26.
 
-## 21. CI and typecheck gate (`[ ]`)
-
-- **Request:** there is no CI, no branch protection and Netlify builds only; `tsc --noEmit` already fails and 56 tests never gate a deploy (audit F-08).
-- **Approach:** add `.github/workflows/ci.yml` (`npm ci`, lint, `tsc --noEmit`, unit, worker typecheck/tests, build, Playwright) on PR/push; require checks and a PR on `main`; delete or ignore `data/_oldquestions.ts`, exclude `workers/**` from the root tsconfig, fix the stale i18n import.
-- **Verify:** a PR with a failing test/typecheck is blocked; `main` is green; Netlify production only follows a green `main`.
-- **Relations:** enables the gates in 30, 22, 32.
-
 ## 22. Build Tailwind and add CSP/security headers (`[ ]`)
 
 - **Request:** the UI is styled at runtime by an unpinned `cdn.tailwindcss.com` script with no SRI; there is no CSP/nosniff/frame/referrer header set; the built CSS is 954 B of dead directives (audit F-09).
@@ -227,9 +220,3 @@ retired to `docs/ROADMAP-ARCHIVE.md` as **one line**; git history keeps the narr
 - **Verify:** `npm audit` has no high/critical; build, unit, worker and e2e pass; no runtime-reachable advisory.
 - **Relations:** relates 21.
 
-## 38. Require host secret for room discovery (`[ ]`)
-
-- **Request:** `getRoomsByHost` answers with a client-supplied `hostId` alone, so host ids can be enumerated and their room codes/player names disclosed; a first-create squat needs only a victim host id (security review F-02, 2026-10-23).
-- **Approach:** require `hostSecret` on `getRoomsByHost`; compare its SHA-256 against the indexed rows for that host id and return `[]` when absent or wrong. Client sends the stored host secret on discovery/adopt. Files: `workers/bamboozle-rooms/src/directory.ts`, `services/gameService.ts`, tests/smoke.
-- **Verify:** discovery without a secret and with a wrong secret returns `[]`; the owning host still lists its rooms; adopt-or-create and the 2-room cap still work; unit/smoke/e2e pass.
-- **Relations:** fixes review F-02; relates 17.
