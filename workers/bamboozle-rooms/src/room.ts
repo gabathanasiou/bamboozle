@@ -3,10 +3,15 @@ import { emptyRoomMs, playerKickMs, roomGraceMs } from './env';
 import {
   MAX_NAME_LENGTH,
   MAX_TTS_LENGTH,
+  hashHostSecret,
   isObject,
+  normalizeHostSecret,
   normalizeLanguage,
   normalizeRole,
   sanitize,
+  stampPlayerEvent,
+  timingSafeEqual,
+  validatePlayerId,
   type Role,
 } from './protocol';
 import { getAudio } from './tts';
@@ -16,7 +21,6 @@ const DIRECTORY_NAME = 'directory';
 interface RoomInfo {
   exists: true;
   roomCode: string;
-  hostId: string;
   phase: string;
   playerCount: number;
   playerNames: string[];
@@ -130,9 +134,15 @@ export class BambooRoom {
     if (this.meta('roomCode')) return json({ error: 'ROOM_EXISTS' }, 409);
 
     const roomCode = sanitize(body.roomCode, 4).toUpperCase();
-    const hostId = sanitize(body.hostId, 50);
+    const hostId = validatePlayerId(body.hostId);
     const hostSocketId = sanitize(body.hostSocketId, 128);
-    if (!/^[A-Z]{4}$/.test(roomCode) || !hostId || !hostSocketId) {
+    const hostSecretHash = sanitize(body.hostSecretHash, 64);
+    if (
+      !/^[A-Z]{4}$/.test(roomCode) ||
+      !hostId ||
+      !hostSocketId ||
+      !/^[a-f0-9]{64}$/.test(hostSecretHash)
+    ) {
       return json({ error: 'INVALID_INIT' }, 400);
     }
 
@@ -140,6 +150,7 @@ export class BambooRoom {
     this.metaSet('roomCode', roomCode);
     this.metaSet('hostId', hostId);
     this.metaSet('hostSocketId', hostSocketId);
+    this.metaSet('hostSecretHash', hostSecretHash);
     this.metaSet('pendingHostReconnect', '0');
     this.metaSet('hostGraceReason', '');
     this.metaSet('createdAt', String(now));
@@ -183,7 +194,6 @@ export class BambooRoom {
     const info: RoomInfo = {
       exists: true,
       roomCode,
-      hostId: this.meta('hostId') || '',
       phase: typeof state?.phase === 'string' ? state.phase : this.meta('phase') || 'LOBBY',
       playerCount: players.length || fallbackPlayers.filter((player) => player.connected === 1).length,
       playerNames: playerNames.length
@@ -250,32 +260,52 @@ export class BambooRoom {
     const roomCode = this.meta('roomCode');
     if (!roomCode) return json({ error: 'ROOM_NOT_FOUND' }, 404);
 
-    const playerId = sanitize(body.playerId, 50);
+    const playerId = validatePlayerId(body.playerId);
     const socketId = sanitize(body.socketId, 128);
     const name = sanitize(body.name, MAX_NAME_LENGTH);
-    const role = normalizeRole(body.role);
+    const hostSecret = normalizeHostSecret(body.hostSecret);
     if (!playerId || !socketId) return json({ error: 'INVALID_JOIN' }, 400);
 
     const hostId = this.meta('hostId') || '';
     const pending = this.boolMeta('pendingHostReconnect');
     const hostSocketId = this.meta('hostSocketId') || '';
-    const becameHost = playerId === hostId && (pending || !hostSocketId);
+    const isHostIdentity = playerId === hostId;
+    let becameHost = false;
 
-    if (becameHost) {
+    if (isHostIdentity) {
+      // The host id is public only in old builds; the server-issued secret is
+      // the credential. Never fall back to accepting the id on its own.
+      const storedHash = this.meta('hostSecretHash') || '';
+      const suppliedHash = hostSecret ? await hashHostSecret(hostSecret) : '';
+      if (!storedHash || !suppliedHash || !timingSafeEqual(suppliedHash, storedHash)) {
+        return json({ error: 'HOST_SECRET_REQUIRED' }, 403);
+      }
+      becameHost = true;
       this.metaSet('hostSocketId', socketId);
       this.metaSet('pendingHostReconnect', '0');
       this.metaSet('hostGraceReason', '');
       await this.clearDeadline('host_grace', 'room');
       await this.broadcast('hostReconnected', undefined, { excludeSocketId: socketId });
+      if (hostSocketId && hostSocketId !== socketId) {
+        // A reconnect race or a deliberate second tab with the same secret:
+        // the newest socket wins and the old one loses host authority.
+        await this.directory('/internal/demote', { socketId: hostSocketId });
+      }
     }
 
+    const requestedRole = normalizeRole(body.role);
+    const role: Role = isHostIdentity
+      ? 'HOST'
+      : requestedRole === 'AUDIENCE'
+        ? 'AUDIENCE'
+        : 'PLAYER';
     const now = Date.now();
     this.ctx.storage.sql.exec(
       `INSERT INTO players (id, name, role, connected, last_seen)
        VALUES (?, ?, ?, 1, ?)
        ON CONFLICT(id) DO UPDATE SET
          name = CASE WHEN excluded.name <> '' THEN excluded.name ELSE players.name END,
-         role = CASE WHEN excluded.role <> '' THEN excluded.role ELSE players.role END,
+         role = excluded.role,
          connected = 1,
          last_seen = excluded.last_seen`,
       playerId,
@@ -288,7 +318,7 @@ export class BambooRoom {
 
     return json({
       success: true,
-      state: this.readState(),
+      state: this.publicState(this.readState()),
       becameHost,
     });
   }
@@ -325,9 +355,10 @@ export class BambooRoom {
     const gameState = body.gameState;
     if (!isObject(gameState)) return json({ error: 'INVALID_STATE' }, 400);
 
-    this.latestState = gameState;
-    this.persistState(gameState, false);
-    await this.broadcast('gameStateUpdate', gameState, {
+    const publicState = this.publicState(gameState)!;
+    this.latestState = publicState;
+    this.persistState(publicState, false);
+    await this.broadcast('gameStateUpdate', publicState, {
       excludeSocketId: sanitize(body.socketId, 128),
     });
     return json({ ok: true });
@@ -342,7 +373,37 @@ export class BambooRoom {
   }
 
   private async playerEvent(body: Record<string, unknown>): Promise<Response> {
-    await this.broadcast('playerEvent', body.event, {
+    const senderId = validatePlayerId(body.senderId ?? body.playerId);
+    if (!senderId) return json({ error: 'PLAYER_EVENT_FORBIDDEN' }, 403);
+
+    const sender = this.ctx.storage.sql
+      .exec<PlayerRow>('SELECT id, name, role, connected FROM players WHERE id = ?', senderId)
+      .toArray()[0];
+    if (!sender || sender.connected !== 1) return json({ error: 'PLAYER_EVENT_FORBIDDEN' }, 403);
+
+    const event = stampPlayerEvent(body.event, senderId);
+    if (!event) return json({ error: 'PLAYER_EVENT_FORBIDDEN' }, 403);
+
+    const eventType = (event as { type: string }).type;
+    if (eventType === 'SUBMIT_AUDIENCE_VOTE' && sender.role !== 'AUDIENCE') {
+      return json({ error: 'PLAYER_EVENT_FORBIDDEN' }, 403);
+    }
+    if (
+      sender.role === 'AUDIENCE' &&
+      (eventType === 'SUBMIT_LIE' || eventType === 'SUBMIT_VOTE' || eventType === 'TOGGLE_READY')
+    ) {
+      return json({ error: 'PLAYER_EVENT_FORBIDDEN' }, 403);
+    }
+
+    if (eventType === 'JOIN_ROOM' || eventType === 'JOIN_AUDIENCE') {
+      this.ctx.storage.sql.exec(
+        'UPDATE players SET role = ? WHERE id = ?',
+        eventType === 'JOIN_AUDIENCE' ? 'AUDIENCE' : 'PLAYER',
+        senderId,
+      );
+    }
+
+    await this.broadcast('playerEvent', event, {
       excludeSocketId: sanitize(body.socketId, 128),
     });
     return json({ ok: true });
@@ -475,10 +536,20 @@ export class BambooRoom {
     if (!row) return null;
     try {
       const parsed = JSON.parse(row.json);
-      return isObject(parsed) ? parsed : null;
+      return isObject(parsed) ? this.publicState(parsed) : null;
     } catch {
       return null;
     }
+  }
+
+  /**
+   * hostId is not an auth credential and must never leave the server in room
+   * state (broadcast, join response or requestState).
+   */
+  private publicState(state: Record<string, unknown> | null): Record<string, unknown> | null {
+    if (!state) return null;
+    const { hostId: _hostId, ...rest } = state;
+    return rest;
   }
 
   private writeState(state: Record<string, unknown>): void {

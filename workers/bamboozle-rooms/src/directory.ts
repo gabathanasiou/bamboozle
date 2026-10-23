@@ -3,13 +3,20 @@ import { authorizeHost } from './auth';
 import {
   MAX_CONCURRENT_ROOMS_PER_HOST,
   RATE_LIMITED_EVENTS,
+  READ_EVENTS,
   consumeRate,
+  hashHostSecret,
+  isPlayerEventType,
   normalizeHostId,
+  normalizeHostSecret,
   normalizeRoomCode,
   normalizeRole,
   parseClientMessage,
+  randomHostSecret,
   sanitize,
-  sanitizePlayerEvent,
+  timingSafeEqual,
+  validatePlayerId,
+  type RateState,
   type ServerAck,
   type SocketAttachment,
 } from './protocol';
@@ -20,6 +27,7 @@ interface RoomRow {
   [key: string]: string | number | null;
   code: string;
   host_id: string;
+  host_secret_hash: string;
   created_at: number;
   phase: string;
   player_count: number;
@@ -29,7 +37,6 @@ interface RoomRow {
 interface RoomInfo {
   exists: true;
   roomCode: string;
-  hostId: string;
   phase: string;
   playerCount: number;
   playerNames: string[];
@@ -58,6 +65,7 @@ interface RoomSummary {
 export class Directory {
   private readonly ctx: DurableObjectState;
   private readonly env: Env;
+  private ipRates = new Map<string, RateState>();
 
   constructor(ctx: DurableObjectState, env: Env) {
     this.ctx = ctx;
@@ -70,6 +78,7 @@ export class Directory {
       CREATE TABLE IF NOT EXISTS rooms (
         code TEXT PRIMARY KEY,
         host_id TEXT NOT NULL,
+        host_secret_hash TEXT NOT NULL DEFAULT '',
         created_at INTEGER NOT NULL,
         phase TEXT NOT NULL DEFAULT 'LOBBY',
         player_count INTEGER NOT NULL DEFAULT 0,
@@ -78,6 +87,12 @@ export class Directory {
       CREATE INDEX IF NOT EXISTS rooms_by_host ON rooms(host_id);
       CREATE INDEX IF NOT EXISTS rooms_by_created ON rooms(created_at);
     `);
+    // Existing deployments predate the host-secret column.
+    try {
+      this.ctx.storage.sql.exec("ALTER TABLE rooms ADD COLUMN host_secret_hash TEXT NOT NULL DEFAULT ''");
+    } catch {
+      // Column already exists.
+    }
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -114,6 +129,14 @@ export class Directory {
       role: null,
       isHost: false,
       rate: { count: 0, windowStart: Date.now() },
+      clientIp:
+        (request.headers.get('cf-connecting-ip') ||
+          request.headers.get('x-real-ip') ||
+          request.headers.get('x-forwarded-for') ||
+          '')
+          .split(',')[0]
+          .trim()
+          .slice(0, 64),
     };
     server.serializeAttachment(attachment);
     return new Response(null, { status: 101, webSocket: client });
@@ -137,12 +160,29 @@ export class Directory {
     }
 
     if (RATE_LIMITED_EVENTS.has(clientMessage.event)) {
-      const rate = consumeRate(attachment.rate, Date.now());
+      const now = Date.now();
+      const rate = consumeRate(attachment.rate, now);
       attachment.rate = rate.next;
       ws.serializeAttachment(attachment);
       if (rate.limited) {
         if (clientMessage.id) this.sendAck(ws, clientMessage.id, false, 'RATE_LIMITED');
         return;
+      }
+
+      if (READ_EVENTS.has(clientMessage.event) && attachment.clientIp) {
+        const ipKey = attachment.clientIp;
+        const ipRate = consumeRate(this.ipRates.get(ipKey) ?? { count: 0, windowStart: now }, now);
+        this.ipRates.set(ipKey, ipRate.next);
+        if (this.ipRates.size > 5000) {
+          const cutoff = now - 10 * 60 * 1000;
+          for (const [key, state] of this.ipRates) {
+            if (state.windowStart < cutoff) this.ipRates.delete(key);
+          }
+        }
+        if (ipRate.limited) {
+          if (clientMessage.id) this.sendAck(ws, clientMessage.id, false, 'RATE_LIMITED');
+          return;
+        }
       }
     }
 
@@ -193,13 +233,26 @@ export class Directory {
           return;
         }
 
-        const roomCode = await this.createRoomForHost(hostId, attachment.socketId);
-        attachment.roomCode = roomCode;
-        attachment.playerId = hostId;
-        attachment.role = 'HOST';
-        attachment.isHost = true;
-        ws.serializeAttachment(attachment);
-        ack(roomCode);
+        try {
+          const created = await this.createRoomForHost(
+            hostId,
+            attachment.socketId,
+            typeof data.hostSecret === 'string' ? data.hostSecret : undefined,
+          );
+          attachment.roomCode = created.roomCode;
+          attachment.playerId = hostId;
+          attachment.role = 'HOST';
+          attachment.isHost = true;
+          ws.serializeAttachment(attachment);
+          ack(created);
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : 'ROOM_CREATE_FAILED';
+          if (reason === 'ROOM_LIMIT' || reason === 'INVALID_HOST_ID' || reason === 'HOST_SECRET_REQUIRED') {
+            ack({ error: reason });
+          } else {
+            throw error;
+          }
+        }
         return;
       }
 
@@ -214,7 +267,7 @@ export class Directory {
           return;
         }
 
-        const playerId = sanitize(data.id, 50);
+        const playerId = validatePlayerId(data.id);
         if (!playerId) {
           ack({ error: 'INVALID_PLAYER_ID' });
           return;
@@ -230,9 +283,11 @@ export class Directory {
           role,
           name: sanitize(data.name, 12),
           socketId: attachment.socketId,
+          hostSecret: normalizeHostSecret(data.hostSecret),
         });
         if (!response.ok) {
-          ack({ error: 'Room not found' });
+          const result = (await response.json().catch(() => ({}))) as { error?: string };
+          ack({ error: result.error || 'Room not found' });
           return;
         }
 
@@ -243,7 +298,7 @@ export class Directory {
         const becameHost = result.becameHost === true;
         attachment.roomCode = code;
         attachment.playerId = playerId;
-        attachment.role = becameHost ? 'HOST' : role;
+        attachment.role = becameHost ? 'HOST' : role === 'AUDIENCE' ? 'AUDIENCE' : 'PLAYER';
         attachment.isHost = becameHost;
         ws.serializeAttachment(attachment);
         ack({ success: true, state: result.state ?? null, becameHost });
@@ -252,7 +307,7 @@ export class Directory {
 
       case 'requestState': {
         const code = normalizeRoomCode(data.roomCode) || attachment.roomCode;
-        if (!code) {
+        if (!code || !attachment.roomCode || code !== attachment.roomCode) {
           ack(null);
           return;
         }
@@ -291,9 +346,11 @@ export class Directory {
       case 'playerEvent': {
         const code = normalizeRoomCode(data.roomCode) || attachment.roomCode;
         if (!code || !attachment.roomCode || code !== attachment.roomCode) return;
+        if (!attachment.playerId) return;
+        if (!isRecord(data.event) || !isPlayerEventType(data.event.type)) return;
         await this.roomFetch(code, '/internal/player-event', {
-          event: sanitizePlayerEvent(data.event),
-          playerId: attachment.playerId,
+          event: data.event,
+          senderId: attachment.playerId,
           socketId: attachment.socketId,
         });
         return;
@@ -350,13 +407,35 @@ export class Directory {
   // Room index / allocation
   // ---------------------------------------------------------------------------
 
-  async createRoomForHost(rawHostId: string, hostSocketId: string): Promise<string> {
+  async createRoomForHost(
+    rawHostId: string,
+    hostSocketId: string,
+    suppliedSecret?: string,
+  ): Promise<{ roomCode: string; hostSecret: string }> {
     const hostId = normalizeHostId(rawHostId);
     if (!hostId) throw new Error('INVALID_HOST_ID');
 
     await this.sweepStaleRooms();
 
     let rows = this.rowsForHost(hostId);
+    let hostSecret = normalizeHostSecret(suppliedSecret);
+    let hostSecretHash = '';
+
+    if (rows.length > 0) {
+      // Every room for a host shares one server-issued secret. It is required
+      // before createRoom may create, grace or close any of them.
+      if (!hostSecret) throw new Error('HOST_SECRET_REQUIRED');
+      const suppliedHash = await hashHostSecret(hostSecret);
+      const match = rows.find(
+        (row) => !!row.host_secret_hash && timingSafeEqual(suppliedHash, row.host_secret_hash),
+      );
+      if (!match) throw new Error('HOST_SECRET_REQUIRED');
+      hostSecretHash = match.host_secret_hash;
+    } else {
+      hostSecret = randomHostSecret();
+      hostSecretHash = await hashHostSecret(hostSecret);
+    }
+
     if (rows.length >= 3) {
       await this.closeRoomRow(rows[0].code, 'LIMIT_HARD_CAP');
       rows = this.rowsForHost(hostId);
@@ -375,17 +454,19 @@ export class Directory {
         roomCode: code,
         hostId,
         hostSocketId,
+        hostSecretHash,
       });
       if (response.status === 200) {
         try {
           this.ctx.storage.sql.exec(
-            `INSERT INTO rooms (code, host_id, created_at, phase, player_count, pending_host_reconnect)
-             VALUES (?, ?, ?, 'LOBBY', 0, 0)`,
+            `INSERT INTO rooms (code, host_id, host_secret_hash, created_at, phase, player_count, pending_host_reconnect)
+             VALUES (?, ?, ?, ?, 'LOBBY', 0, 0)`,
             code,
             hostId,
+            hostSecretHash,
             Date.now(),
           );
-          return code;
+          return { roomCode: code, hostSecret };
         } catch (error) {
           await this.roomFetch(code, '/internal/close', { reason: 'INDEX_INSERT_FAILED' });
           throw error;
@@ -437,7 +518,7 @@ export class Directory {
   private rowsForHost(hostId: string): RoomRow[] {
     return this.ctx.storage.sql
       .exec<RoomRow>(
-        'SELECT code, host_id, created_at, phase, player_count, pending_host_reconnect FROM rooms WHERE host_id = ? ORDER BY created_at ASC',
+        'SELECT code, host_id, host_secret_hash, created_at, phase, player_count, pending_host_reconnect FROM rooms WHERE host_id = ? ORDER BY created_at ASC',
         hostId,
       )
       .toArray();
@@ -446,7 +527,7 @@ export class Directory {
   private getRow(code: string): RoomRow | null {
     const row = this.ctx.storage.sql
       .exec<RoomRow>(
-        'SELECT code, host_id, created_at, phase, player_count, pending_host_reconnect FROM rooms WHERE code = ?',
+        'SELECT code, host_id, host_secret_hash, created_at, phase, player_count, pending_host_reconnect FROM rooms WHERE code = ?',
         code,
       )
       .toArray()[0];

@@ -12,8 +12,37 @@ export const MAX_TTS_LENGTH = 500;
 export const MAX_EVENTS_PER_WINDOW = 20;
 export const EVENT_RATE_WINDOW = 10_000;
 export const MAX_CONCURRENT_ROOMS_PER_HOST = 2;
+export const HOST_SECRET_BYTES = 16;
 
 export type Role = 'HOST' | 'PLAYER' | 'AUDIENCE';
+
+/**
+ * The only `playerEvent` types an unprivileged socket may send to the host
+ * reducer. Host-only actions stay on the `hostEvent` channel.
+ */
+export const PLAYER_EVENT_TYPES = new Set([
+  'JOIN_ROOM',
+  'JOIN_AUDIENCE',
+  'TOGGLE_READY',
+  'SUBMIT_LIE',
+  'SUBMIT_VOTE',
+  'SUBMIT_AUDIENCE_VOTE',
+  'SELECT_CATEGORY',
+  'SEND_EMOTE',
+]);
+
+/** Events whose payload carries the sender's player id and must be stamped. */
+const SENDER_ID_EVENTS = new Set([
+  'TOGGLE_READY',
+  'SUBMIT_LIE',
+  'SUBMIT_VOTE',
+  'SUBMIT_AUDIENCE_VOTE',
+  'SELECT_CATEGORY',
+]);
+
+const PLAYER_ID_RE = /^[A-Za-z0-9_-]{1,50}$/;
+const HOST_SECRET_RE = /^[A-Za-z0-9_-]{16,128}$/;
+const RESERVED_PLAYER_IDS = new Set(['__proto__', 'constructor', 'prototype']);
 
 export interface ClientMessage {
   id?: string;
@@ -42,6 +71,7 @@ export interface SocketAttachment {
   role: Role | null;
   isHost: boolean;
   rate: RateState;
+  clientIp: string;
 }
 
 export type ParseResult =
@@ -103,11 +133,17 @@ function sniffId(text: string): string | undefined {
 export const RATE_LIMITED_EVENTS = new Set([
   'createRoom',
   'joinRoom',
+  'checkRoom',
+  'getRoomsByHost',
+  'requestState',
   'gameStateUpdate',
   'hostEvent',
   'requestNarrator',
   'playerEvent',
 ]);
+
+/** Read-only lookups also get a per-IP budget, not just a per-socket one. */
+export const READ_EVENTS = new Set(['checkRoom', 'getRoomsByHost', 'requestState']);
 
 export function consumeRate(state: RateState, now: number): { limited: boolean; next: RateState } {
   const fresh = now - state.windowStart > EVENT_RATE_WINDOW;
@@ -129,7 +165,45 @@ export function normalizeRoomCode(value: unknown): string | null {
 }
 
 export function normalizeHostId(value: unknown): string {
-  return sanitize(value, 50);
+  return validatePlayerId(value);
+}
+
+export function validatePlayerId(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  const raw = value.trim();
+  if (raw.length > 50) return '';
+  const id = sanitize(raw, 50);
+  if (!id || RESERVED_PLAYER_IDS.has(id) || !PLAYER_ID_RE.test(id)) return '';
+  return id;
+}
+
+export function normalizeHostSecret(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  const secret = value.trim();
+  return HOST_SECRET_RE.test(secret) ? secret : '';
+}
+
+export function randomHostSecret(): string {
+  const bytes = new Uint8Array(HOST_SECRET_BYTES);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+export async function hashHostSecret(secret: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(secret));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+/** Compare two secrets/hashes without an early exit on the first mismatch. */
+export function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+export function isPlayerEventType(value: unknown): boolean {
+  return typeof value === 'string' && PLAYER_EVENT_TYPES.has(value);
 }
 
 export function normalizeLanguage(value: unknown): 'en' | 'el' {
@@ -150,8 +224,35 @@ export function sanitizePlayerEvent(event: unknown): unknown {
     const record = payload as Record<string, unknown>;
     if (typeof record.text === 'string') record.text = sanitize(record.text, MAX_ANSWER_LENGTH);
     if (typeof record.name === 'string') record.name = sanitize(record.name, MAX_NAME_LENGTH);
+    if (typeof record.senderName === 'string') record.senderName = sanitize(record.senderName, MAX_NAME_LENGTH);
+    if (typeof record.senderSeed === 'string') record.senderSeed = sanitize(record.senderSeed, MAX_NAME_LENGTH);
   }
   return copy;
+}
+
+/**
+ * Reject host-only event types and overwrite the sender-controlled ids with
+ * the id attached to the socket. Returns null when the event is not allowed.
+ */
+export function stampPlayerEvent(event: unknown, senderId: string): unknown | null {
+  if (!senderId || !event || typeof event !== 'object' || Array.isArray(event)) return null;
+  const record = event as Record<string, unknown>;
+  if (!isPlayerEventType(record.type)) return null;
+
+  const copy = structuredClone(event) as Record<string, unknown>;
+  const payload =
+    copy.payload && typeof copy.payload === 'object' && !Array.isArray(copy.payload)
+      ? (copy.payload as Record<string, unknown>)
+      : {};
+  if (SENDER_ID_EVENTS.has(copy.type as string)) payload.playerId = senderId;
+  if (copy.type === 'JOIN_ROOM' || copy.type === 'JOIN_AUDIENCE') payload.id = senderId;
+  copy.payload = payload;
+  return sanitizePlayerEvent(copy);
+}
+
+/** requestState is only allowed for the room the socket actually joined. */
+export function canReadRoomState(attachmentRoomCode: string | null, requestedCode: string | null): boolean {
+  return !!attachmentRoomCode && (!requestedCode || requestedCode === attachmentRoomCode);
 }
 
 export function isObject(value: unknown): value is Record<string, unknown> {

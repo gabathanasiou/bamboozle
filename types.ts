@@ -111,7 +111,7 @@ export type GameEvent =
   | { type: 'SUBMIT_AUDIENCE_VOTE'; payload: { playerId: string; answerId: string } }
   | { type: 'SEND_EMOTE'; payload: { type: 'LAUGH' | 'SHOCK' | 'LOVE' | 'TOMATO'; senderName: string; senderSeed: string; x?: number; y?: number } }
   | { type: 'START_GAME'; payload: { rounds: number } }
-  | { type: 'SELECT_CATEGORY'; payload: { category: string } }
+  | { type: 'SELECT_CATEGORY'; payload: { category: string; playerId?: string } }
   | { type: 'TOGGLE_ONLINE_MODE'; payload: null }
   | { type: 'TOGGLE_LANGUAGE'; payload: null } // New event
   | { type: 'TOGGLE_PREMIUM_VOICES'; payload: null } // New event

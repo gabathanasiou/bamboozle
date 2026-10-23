@@ -5,16 +5,20 @@ import type { Directory } from '../src/directory';
 const HOST = 'host-directory';
 const directory = () => env.DIRECTORY.get(env.DIRECTORY.idFromName('directory'));
 
-async function create(hostId = HOST, socketId = 'host-sock'): Promise<string> {
+async function create(
+  hostId = HOST,
+  socketId = 'host-sock',
+  secret?: string,
+): Promise<{ roomCode: string; hostSecret: string }> {
   return runInDurableObject(directory(), async (instance: Directory) =>
-    instance.createRoomForHost(hostId, socketId),
+    instance.createRoomForHost(hostId, socketId, secret),
   );
 }
 
 async function roomRows() {
   return runInDurableObject(directory(), (_instance: Directory, state) =>
     state.storage.sql
-      .exec('SELECT code, host_id, created_at, phase, player_count, pending_host_reconnect FROM rooms ORDER BY created_at ASC')
+      .exec('SELECT code, host_id, host_secret_hash, created_at, phase, player_count, pending_host_reconnect FROM rooms ORDER BY created_at ASC')
       .toArray() as Array<Record<string, string | number>>,
   );
 }
@@ -39,48 +43,58 @@ describe('Directory', () => {
   });
 
   it('allocates 4-letter room codes and indexes the host', async () => {
-    const code = await create();
+    const { roomCode: code, hostSecret } = await create();
     expect(code).toMatch(/^[A-Z]{4}$/);
+    expect(hostSecret).toMatch(/^[a-f0-9]{32}$/);
 
     const rows = await roomRows();
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ code, host_id: HOST, pending_host_reconnect: 0 });
+    expect(String(rows[0].host_secret_hash)).toMatch(/^[a-f0-9]{64}$/);
   });
 
-  it('moves the oldest room to grace on the 3rd room', async () => {
+  it('requires the host secret to create another room for the same host', async () => {
     const first = await create();
-    const second = await create();
-    const third = await create();
-    expect(new Set([first, second, third]).size).toBe(3);
+    await expect(create()).rejects.toThrow('HOST_SECRET_REQUIRED');
+    await expect(create(HOST, 'host-sock-x', 'ffffffffffffffffffffffffffffffff')).rejects.toThrow(
+      'HOST_SECRET_REQUIRED',
+    );
+
+    const second = await create(HOST, 'host-sock-2', first.hostSecret);
+    const third = await create(HOST, 'host-sock-3', first.hostSecret);
 
     const rows = await roomRows();
     expect(rows).toHaveLength(3);
-    expect(rows[0]).toMatchObject({ code: first, pending_host_reconnect: 1 });
-    expect(rows[1]).toMatchObject({ code: second, pending_host_reconnect: 0 });
-    expect(rows[2]).toMatchObject({ code: third, pending_host_reconnect: 0 });
+    expect(rows[0]).toMatchObject({ code: first.roomCode, pending_host_reconnect: 1 });
+    expect(rows[1]).toMatchObject({ code: second.roomCode, pending_host_reconnect: 0 });
+    expect(rows[2]).toMatchObject({ code: third.roomCode, pending_host_reconnect: 0 });
   });
 
   it('closes the oldest room on the 4th room, then keeps the 2-active cap', async () => {
     const first = await create();
-    await create();
-    await create();
-    const fourth = await create(undefined, 'host-sock-4');
+    await create(HOST, 'host-sock-2', first.hostSecret);
+    await create(HOST, 'host-sock-3', first.hostSecret);
+    await expect(create(HOST, 'host-sock-4', 'ffffffffffffffffffffffffffffffff')).rejects.toThrow(
+      'HOST_SECRET_REQUIRED',
+    );
+
+    const fourth = await create(HOST, 'host-sock-4', first.hostSecret);
 
     const exists = await runInDurableObject(directory(), async (instance: Directory) =>
-      instance.checkRoomExists(first),
+      instance.checkRoomExists(first.roomCode),
     );
     expect(exists).toBe(false);
 
     const rows = await roomRows();
-    expect(rows.map((row) => row.code)).not.toContain(first);
-    expect(rows.map((row) => row.code)).toContain(fourth);
+    expect(rows.map((row) => row.code)).not.toContain(first.roomCode);
+    expect(rows.map((row) => row.code)).toContain(fourth.roomCode);
     expect(rows.filter((row) => row.pending_host_reconnect === 0).length).toBeLessThanOrEqual(2);
   });
 
   it('returns fresh phase, player count and names from the room DO', async () => {
     const code = await create();
-    await updateRoomState(code, {
-      roomCode: code,
+    await updateRoomState(code.roomCode, {
+      roomCode: code.roomCode,
       phase: 'WRITING',
       players: {
         p1: { id: 'p1', name: 'Bob' },
@@ -93,7 +107,7 @@ describe('Directory', () => {
     );
     expect(rooms).toHaveLength(1);
     expect(rooms[0]).toEqual({
-      roomCode: code,
+      roomCode: code.roomCode,
       phase: 'WRITING',
       playerCount: 2,
       playerNames: ['Bob', 'Alice'],

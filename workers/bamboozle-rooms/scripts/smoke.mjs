@@ -129,13 +129,17 @@ async function main() {
 
   const hostId = `smoke-host-${Date.now()}`;
   let roomCode;
+  let hostSecret;
   let host = await Client.connect();
   let player = await Client.connect();
   let audience = await Client.connect();
 
   await step('createRoom + checkRoom', async () => {
-    roomCode = await host.ack('createRoom', { hostId });
+    const created = await host.ack('createRoom', { hostId });
+    roomCode = created.roomCode;
+    hostSecret = created.hostSecret;
     assert(/^[A-Z]{4}$/.test(roomCode), `room code: ${roomCode}`);
+    assert(/^[a-f0-9]{32}$/.test(hostSecret || ''), 'server-issued host secret');
     const check = await player.ack('checkRoom', { roomCode });
     assert(check.exists === true, 'checkRoom exists');
   });
@@ -156,6 +160,17 @@ async function main() {
     assert(playerResult.success === true, 'player join');
     assert(audienceResult.success === true, 'audience join');
     assert(same(playerResult.state, audienceResult.state), 'join states identical');
+  });
+
+  await step('requestState requires room membership', async () => {
+    const outsider = await Client.connect();
+    const denied = await outsider.ack('requestState', { roomCode });
+    assert(denied === null, 'outsider read rejected');
+    const member = await host.ack('requestState', { roomCode });
+    assert(member && member.roomCode === roomCode, 'joined host can read its room');
+    const other = await host.ack('requestState', { roomCode: 'ZZZZ' });
+    assert(other === null, 'cannot read a different room');
+    outsider.close();
   });
 
   await step('gameStateUpdate relay (exclude sender)', async () => {
@@ -193,11 +208,23 @@ async function main() {
     assert(disconnected === undefined, 'hostDisconnected has no payload');
 
     const newHost = await Client.connect();
-    const result = await newHost.ack('joinRoom', { roomCode, id: hostId, role: 'HOST' });
+    const result = await newHost.ack('joinRoom', {
+      roomCode,
+      id: hostId,
+      role: 'HOST',
+      hostSecret,
+    });
     assert(result.success === true && result.becameHost === true, 'host reclaimed');
     const reconnected = await audience.wait('hostReconnected');
     assert(reconnected === undefined, 'hostReconnected has no payload');
     host = newHost;
+  });
+
+  await step('hostId alone cannot reclaim', async () => {
+    const attacker = await Client.connect();
+    const result = await attacker.ack('joinRoom', { roomCode, id: hostId, role: 'HOST' });
+    assert(result?.error === 'HOST_SECRET_REQUIRED', `expected HOST_SECRET_REQUIRED, got ${JSON.stringify(result)}`);
+    attacker.close();
   });
 
   await step('rate limit >20 events / 10s', async () => {
@@ -220,19 +247,33 @@ async function main() {
     const capHost = `smoke-cap-${Date.now()}`;
     const sockets = [await Client.connect(), await Client.connect(), await Client.connect()];
     const first = await sockets[0].ack('createRoom', { hostId: capHost });
-    const second = await sockets[1].ack('createRoom', { hostId: capHost });
-    const third = await sockets[2].ack('createRoom', { hostId: capHost });
-    assert(new Set([first, second, third]).size === 3, 'three unique rooms');
+    const missing = await sockets[1].ack('createRoom', { hostId: capHost });
+    assert(
+      missing?.error === 'HOST_SECRET_REQUIRED',
+      `expected HOST_SECRET_REQUIRED, got ${JSON.stringify(missing)}`,
+    );
+    const second = await sockets[1].ack('createRoom', {
+      hostId: capHost,
+      hostSecret: first.hostSecret,
+    });
+    const third = await sockets[2].ack('createRoom', {
+      hostId: capHost,
+      hostSecret: first.hostSecret,
+    });
+    assert(new Set([first.roomCode, second.roomCode, third.roomCode]).size === 3, 'three unique rooms');
 
     let rooms = await sockets[0].ack('getRoomsByHost', { hostId: capHost });
-    const graced = rooms.find((room) => room.roomCode === first);
+    const graced = rooms.find((room) => room.roomCode === first.roomCode);
     assert(graced?.isGracePeriod === true, 'oldest is in grace');
 
     const fourthSocket = await Client.connect();
-    const fourth = await fourthSocket.ack('createRoom', { hostId: capHost });
+    const fourth = await fourthSocket.ack('createRoom', {
+      hostId: capHost,
+      hostSecret: first.hostSecret,
+    });
     rooms = await fourthSocket.ack('getRoomsByHost', { hostId: capHost });
-    assert(!rooms.some((room) => room.roomCode === first), 'oldest closed');
-    assert(rooms.some((room) => room.roomCode === fourth), '4th room exists');
+    assert(!rooms.some((room) => room.roomCode === first.roomCode), 'oldest closed');
+    assert(rooms.some((room) => room.roomCode === fourth.roomCode), '4th room exists');
     sockets.forEach((socket) => socket.close());
     fourthSocket.close();
   });

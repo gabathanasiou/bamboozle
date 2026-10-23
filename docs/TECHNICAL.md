@@ -85,12 +85,16 @@ The bot brain `useEffect` is gated on `isHostRef.current` (a ref, not state). Th
 
 ### Host Reconnection / Reclaim
 When a host disconnects and rejoins:
-1. The server returns `becameHost: true` in the `joinRoom` response.
-2. `isHostRef.current` is set to `true`.
-3. `state.hostId` is updated to the reclaiming client's `playerId`.
-4. `state.vipId` is updated similarly.
-5. The full state is broadcast to re-sync all players.
-6. `resumeGameProgression()` restarts any mid-phase game logic.
+1. The server verifies the host secret issued by `createRoom`; knowing `hostId`
+   alone is not enough. The raw secret is stored on the host device, only its
+   hash lives in room meta.
+2. The server returns `becameHost: true` in the `joinRoom` response.
+3. `isHostRef.current` is set to `true`.
+4. `state.hostId` is updated locally to the reclaiming client's `playerId`;
+   `hostId` is stripped from everything the server broadcasts.
+5. `state.vipId` is updated similarly.
+6. The full state is broadcast to re-sync all players.
+7. `resumeGameProgression()` restarts any mid-phase game logic.
 
 ## Online Friends Mode
 This mode merges the "Big Screen" visuals with the "Controller" inputs.

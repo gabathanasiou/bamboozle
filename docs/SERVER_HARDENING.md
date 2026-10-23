@@ -65,6 +65,18 @@ Only the current host socket can send `gameStateUpdate`, `hostEvent` or
 `requestNarrator`. The room DO compares the socket id to `hostSocketId`; a demoted
 host socket (3rd-room grace) is rejected until it reclaims.
 
+`hostSocketId` is bound only after the socket proves it knows the server-issued
+host secret: a SHA-256 hash is stored in room meta and the raw secret is returned
+once to the creating socket. `joinRoom` reclaim compares hashes with a
+constant-time comparison. `hostId` is public-ish and is never accepted alone;
+`createRoom` also requires the secret before it may grace or close another room
+for that host.
+
+`playerEvent` is a separate, unprivileged channel: only the player-action
+allowlist is relayed, sender ids are stamped from the socket attachment, and
+host-only types are rejected in both the room DO and the host reducer. Category
+selection is allowed only when the stamped sender is the current selector.
+
 ## 6. TTS cost protection
 
 - GCS cache is checked first; a hit costs one metadata request and no TTS billing.
