@@ -5,6 +5,7 @@ import {
     DesignerDiagnostics,
     DesignerElementInfo,
     GameView,
+    RevealOutcome,
     ResizeChange,
     ScreenId,
 } from './types';
@@ -24,7 +25,7 @@ const VIEWS = new Set<GameView>([
 ]);
 const LENGTHS = new Set(['short', 'normal', 'long', 'extreme']);
 const REVEAL_STAGES = new Set(['INTRO', 'CARD', 'VOTERS', 'AUTHOR']);
-const REVEAL_OUTCOMES = new Set(['found', 'not-found', 'mistake']);
+const REVEAL_OUTCOMES = new Set<RevealOutcome>(['found', 'not-found', 'mistake']);
 const LEADERBOARD_STAGES = new Set(['INTRO', 'REVEAL', 'LEADER']);
 const OVERLAYS = new Set(['none', 'host-disconnected', 'room-closed']);
 const PRESENCE = new Set(['none', 'some', 'all']);
@@ -58,7 +59,7 @@ export const normaliseConfig = (input?: Partial<DesignerConfig> | null): Designe
     const totalRounds = clamp(Math.round(Number(merged.game.totalRounds) || 3), 1, 10);
     const answers = clamp(Math.round(Number(merged.game.answers) || 4), 2, 7);
     const playersCount = clamp(Math.round(Number(merged.game.players) || 4), 1, 6);
-    const revealOutcome = valid(merged.game.revealOutcome, REVEAL_OUTCOMES, 'found');
+    const revealOutcome = valid<RevealOutcome>(merged.game.revealOutcome, REVEAL_OUTCOMES, 'found');
     const revealVoters = revealOutcome === 'not-found'
         ? 0
         : clamp(Math.round(Number(merged.game.revealVoters) || 0), revealOutcome === 'found' ? 1 : 0, playersCount);

@@ -41,7 +41,7 @@ const clearCopyOverrides = (overrides: ContentOverrides): ContentOverrides => {
 
 const normalizedViewForScreen = (screen: ScreenId, current: GameView): GameView => {
     if (screen === 'join') return 'online-unjoined';
-    if (screen !== 'join' && current === 'online-unjoined') return 'online-host';
+    if (current === 'online-unjoined') return 'online-host';
     return current;
 };
 

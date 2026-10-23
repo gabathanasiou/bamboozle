@@ -528,8 +528,8 @@ export const PreviewSurface: React.FC = () => {
             if (raw.closest('[data-designer-overlay]')) return null;
             const avatar = raw.closest<HTMLElement>('[data-design-avatar]');
             if (avatar && root.contains(avatar)) return avatar;
-            let target: HTMLElement | null = raw instanceof HTMLElement ? raw : raw.parentElement;
-            while (target && !(target instanceof HTMLElement)) target = target.parentElement;
+            let target: HTMLElement | null = raw instanceof HTMLElement ? raw : null;
+            if (!target && raw.parentElement instanceof HTMLElement) target = raw.parentElement;
             if (!target || !root.contains(target) || target === root) return null;
             return target;
         };
