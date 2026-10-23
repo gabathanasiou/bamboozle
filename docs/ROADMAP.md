@@ -115,20 +115,6 @@ retired to `docs/ROADMAP-ARCHIVE.md` as **one line**; git history keeps the narr
 - **Relations:** depends on 4; follows `docs/TESTING.md` (integration probe, not a
   visual test).
 
-## 18. TTS cost abuse (`[ ]`)
-
-- **Request:** `POST /api/tts` is public, unauthenticated, unthrottled and unused by the client; unique text can run up Google TTS/GCS spend (audit F-05).
-- **Approach:** remove the route in production (404 unless an explicit flag plus a host token) or require a short-lived host token; add per-IP and global character budgets; set a hard Google TTS quota and a GCP budget alert; keep the MD5 cache key untouched. Files: `workers/bamboozle-rooms/src/index.ts`, `src/tts.ts`, `wrangler.toml`.
-- **Verify:** anonymous POST → 404/401; an authorised host request returns audio; repeated unique text trips the budget; the cache hit still works; `npm run test:worker` and `scripts/smoke.mjs`.
-- **Relations:** relates 19, 23.
-
-## 19. Abuse and availability caps (`[ ]`)
-
-- **Request:** only a per-socket 20/10s limit exists (reset on reconnect); `createRoom` is capped per caller-supplied hostId; there is no per-IP/global socket or room cap; free-plan quota exhaustion stops every room (audit F-06).
-- **Approach:** Cloudflare rate-limit rules/Turnstile per IP; per-IP socket and create caps; add read events to the limiter; a server-side player cap; a periodic sweep instead of create-time only; cap broadcast state size.
-- **Verify:** scripted socket/hostId churn gets 429; a legitimate 6-player, 2-room session is unaffected; the load smoke stays under the free-plan budget.
-- **Relations:** depends on 4; relates 18, 28.
-
 ## 20. Legacy server hardening or retirement (`[ ]`)
 
 - **Request:** `server/` is the documented rollback but accepts `gameStateUpdate`/`hostEvent`/`requestNarrator` from any socket, uses `cors: '*'`, and mounts unauthenticated `/api/admin/*` when `NODE_ENV !== 'production'` (audit F-07).
@@ -163,13 +149,6 @@ retired to `docs/ROADMAP-ARCHIVE.md` as **one line**; git history keeps the narr
 - **Approach:** publish privacy + terms matching the real flow (names, narration text, Google TTS/GCS, localStorage ids, retention), link them in Settings and the store listing, document subprocessors, and add a deletion/retention rule for narration audio.
 - **Verify:** pages are live and linked; a deletion request removes the audio; Play data-safety answers match; legal review recorded.
 - **Relations:** blocks 9; relates 35.
-
-## 25. Retire the client-trusted host-token design (`[ ]`)
-
-- **Request:** `docs/BILLING_INTEGRATION.md` still specifies `POST /api/get-host-token` signing a host JWT from a client `userId` without verifying `rcToken`, and calls trusting the client acceptable; it must not be implemented (audit F-12).
-- **Approach:** add a prominent "superseded — do not implement" banner to `docs/BILLING_INTEGRATION.md` §4.3 and `docs/ENTITLEMENT_SYSTEM.md`, point at item 5, and remove the snippet so a future agent cannot copy it.
-- **Verify:** `rg 'get-host-token|trusting the client' docs` returns only the banner; item 5's token flow is the only documented path.
-- **Relations:** superseded by 5; blocks 8.
 
 ## 26. Rollback and disaster recovery (`[ ]`)
 
