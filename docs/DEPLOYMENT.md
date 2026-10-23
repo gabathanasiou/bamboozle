@@ -94,8 +94,9 @@ recurring migration.
 (roadmap + doc budget), `tsc --noEmit`, unit tests, worker typecheck/tests, the
 production build, then Playwright. `main` is branch-protected: the
 `Lint, typecheck, test, build` check and a PR are required, so a red check blocks
-both the merge and the Netlify production build that follows it. Do not add a
-direct-push bypass for routine work; use a PR.
+the merge. Netlify no longer builds on push (see Netlify), so merging and
+shipping are separate steps. Do not add a direct-push bypass for routine work;
+use a PR.
 
 The root `tsconfig.json` excludes `workers/**` (the Worker has its own tsconfig)
 and the unused `data/_oldquestions.ts` backup; the live question banks are
@@ -111,6 +112,12 @@ npx netlify env:set VITE_SERVER_URL https://bamboozle-rooms.gabathanasiou.worker
 npm run build
 npx netlify deploy --prod --dir=dist --no-build
 ```
+
+Automatic builds are off (`build_settings.stop_builds = true`): pushes to `main`
+and PRs produce no deploy and no deploy preview. Shipping is the three lines
+above, on demand; for a throwaway preview URL run `npx netlify deploy --dir=dist`
+(draft, no `--prod`). To re-enable, PATCH the site with the **full**
+`build_settings` object — a partial one is accepted but silently ignored.
 
 `VITE_SERVER_URL` is baked at build time: after changing it, rebuild and
 redeploy, or the old URL stays in the bundle. `netlify deploy --build` may
