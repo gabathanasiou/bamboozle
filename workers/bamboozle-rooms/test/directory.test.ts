@@ -70,6 +70,71 @@ describe('Directory', () => {
     expect(String(rows[0].host_secret_hash)).toMatch(/^[a-f0-9]{64}$/);
   });
 
+  it('upgrades a pre-batch schema in place', async () => {
+    await runInDurableObject(directory(), async (instance: Directory, state) => {
+      state.storage.sql.exec(`
+        DROP TABLE IF EXISTS rooms;
+        CREATE TABLE rooms (
+          code TEXT PRIMARY KEY,
+          host_id TEXT NOT NULL,
+          host_secret_hash TEXT NOT NULL DEFAULT '',
+          created_at INTEGER NOT NULL,
+          phase TEXT NOT NULL DEFAULT 'LOBBY',
+          player_count INTEGER NOT NULL DEFAULT 0,
+          pending_host_reconnect INTEGER NOT NULL DEFAULT 0
+        );
+      `);
+
+      expect(() =>
+        (instance as unknown as { ensureSchema(): void }).ensureSchema(),
+      ).not.toThrow();
+
+      const columns = state.storage.sql
+        .exec<{ name: string }>('PRAGMA table_info(rooms)')
+        .toArray()
+        .map((row) => row.name);
+      expect(columns).toEqual(expect.arrayContaining(['last_seen', 'create_key']));
+
+      const index = state.storage.sql
+        .exec<{ name: string }>(
+          "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'rooms_by_create_key'",
+        )
+        .toArray();
+      expect(index).toHaveLength(1);
+    });
+  });
+
+  it('reaps idle rooms but keeps recently active ones', async () => {
+    const now = Date.now();
+    const sevenHoursAgo = now - 7 * 60 * 60 * 1000;
+    await runInDurableObject(directory(), (_instance: Directory, state) => {
+      state.storage.sql.exec(
+        `INSERT INTO rooms (code, host_id, host_secret_hash, created_at, last_seen, phase, player_count, pending_host_reconnect)
+         VALUES ('LIVE', 'other-host', 'abc', ?, ?, 'LOBBY', 0, 0),
+                ('IDLE', 'other-host', 'abc', ?, ?, 'LOBBY', 0, 0)`,
+        sevenHoursAgo,
+        now,
+        sevenHoursAgo,
+        sevenHoursAgo,
+      );
+    });
+
+    await runInDurableObject(directory(), async (instance: Directory) => {
+      await instance.alarm();
+    });
+
+    const codes = (await roomRows())
+      .map((row) => row.code)
+      .filter((code) => code === 'LIVE' || code === 'IDLE');
+    expect(codes).toEqual(['LIVE']);
+  });
+
+  it('rejects a malformed create key', async () => {
+    await expect(create(HOST, 'sock-1', undefined, 'short')).rejects.toThrow(
+      'INVALID_CREATE_KEY',
+    );
+  });
+
   it('replays an idempotent create with the same room and secret', async () => {
     const key = 'a'.repeat(32);
     const first = await create(HOST, 'sock-1', undefined, key);
