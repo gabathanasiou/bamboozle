@@ -3,13 +3,15 @@ import {
   maxSocketsPerIp,
   maxSocketsTotal,
   maxTotalRooms,
-  ttsApiDailyChars,
-  ttsApiIpDailyChars,
+  maxUpgradesPerMinute,
+  ttsDailyChars,
+  ttsIpDailyChars,
 } from './env';
 import { authorizeHost } from './auth';
 import {
   MAX_CONCURRENT_ROOMS_PER_HOST,
   MAX_FRAME_BYTES,
+  EVENT_RATE_WINDOW,
   RATE_LIMITED_EVENTS,
   READ_EVENTS,
   consumeRate,
@@ -32,6 +34,7 @@ import {
 const SIX_HOURS = 6 * 60 * 60 * 1000;
 const CREATE_WINDOW = 60 * 60 * 1000;
 const MAX_CREATES_PER_WINDOW = 10;
+const MAX_READS_PER_IP_WINDOW = 60;
 
 interface RoomRow {
   [key: string]: string | number | null;
@@ -77,6 +80,7 @@ export class Directory {
   private readonly env: Env;
   private ipRates = new Map<string, RateState>();
   private createRates = new Map<string, RateState>();
+  private upgradeRates = new Map<string, RateState>();
 
   constructor(ctx: DurableObjectState, env: Env) {
     this.ctx = ctx;
@@ -153,6 +157,24 @@ export class Directory {
       return new Response('Too many connections', { status: 429 });
     }
     if (clientIp) {
+      const now = Date.now();
+      const upgrade = consumeRate(
+        this.upgradeRates.get(clientIp) ?? { count: 0, windowStart: now },
+        now,
+        maxUpgradesPerMinute(this.env),
+        60_000,
+      );
+      this.upgradeRates.set(clientIp, upgrade.next);
+      if (this.upgradeRates.size > 5000) {
+        const cutoff = now - 10 * 60 * 1000;
+        for (const [key, state] of this.upgradeRates) {
+          if (state.windowStart < cutoff) this.upgradeRates.delete(key);
+        }
+      }
+      if (upgrade.limited) {
+        return new Response('Too many connection attempts', { status: 429 });
+      }
+
       const fromIp = sockets.filter((socket) => this.attachment(socket)?.clientIp === clientIp).length;
       if (fromIp >= maxSocketsPerIp(this.env)) {
         return new Response('Too many connections from this address', { status: 429 });
@@ -204,7 +226,12 @@ export class Directory {
 
       if (READ_EVENTS.has(clientMessage.event) && attachment.clientIp) {
         const ipKey = attachment.clientIp;
-        const ipRate = consumeRate(this.ipRates.get(ipKey) ?? { count: 0, windowStart: now }, now);
+        const ipRate = consumeRate(
+          this.ipRates.get(ipKey) ?? { count: 0, windowStart: now },
+          now,
+          MAX_READS_PER_IP_WINDOW,
+          EVENT_RATE_WINDOW,
+        );
         this.ipRates.set(ipKey, ipRate.next);
         if (this.ipRates.size > 5000) {
           const cutoff = now - 10 * 60 * 1000;
@@ -314,6 +341,12 @@ export class Directory {
           ack({ error: 'INVALID_PLAYER_ID' });
           return;
         }
+        if (attachment.roomCode === code && attachment.playerId && attachment.playerId !== playerId) {
+          // One socket owns one identity per room. This prevents a single
+          // socket from filling the player/audience roster with ghost rows.
+          ack({ error: 'ALREADY_IN_ROOM' });
+          return;
+        }
         if (!(await this.checkRoomExists(code))) {
           ack({ error: 'Room not found' });
           return;
@@ -407,6 +440,7 @@ export class Directory {
           requestId: data.requestId,
           playerId: attachment.playerId,
           socketId: attachment.socketId,
+          clientIp: attachment.clientIp,
         });
         return;
       }
@@ -631,7 +665,15 @@ export class Directory {
     const stale = this.ctx.storage.sql
       .exec<{ code: string }>('SELECT code FROM rooms WHERE created_at < ?', cutoff)
       .toArray();
+    const liveRooms = new Set(
+      this.ctx
+        .getWebSockets()
+        .map((socket) => this.attachment(socket)?.roomCode)
+        .filter((code): code is string => !!code),
+    );
     for (const row of stale) {
+      // A long-running game with connected players is not stale.
+      if (liveRooms.has(row.code)) continue;
       await this.closeRoomRow(row.code, 'STALE_ROOM');
     }
   }
@@ -770,8 +812,8 @@ export class Directory {
     const ipKey = `ip:${ip}`;
     const globalCount = this.budgetCount(globalKey, day);
     const ipCount = this.budgetCount(ipKey, day);
-    const globalLimit = ttsApiDailyChars(this.env);
-    const ipLimit = ttsApiIpDailyChars(this.env);
+    const globalLimit = ttsDailyChars(this.env);
+    const ipLimit = ttsIpDailyChars(this.env);
 
     if (globalCount + chars > globalLimit || ipCount + chars > ipLimit) {
       return json(

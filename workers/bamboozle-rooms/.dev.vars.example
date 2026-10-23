@@ -5,5 +5,5 @@ GOOGLE_APPLICATION_CREDENTIALS_JSON={"type":"service_account","project_id":"..."
 # Ops-only POST /api/tts fallback. Empty/absent disables the route (404).
 # Set a long random value here and with `wrangler secret put TTS_API_TOKEN`.
 TTS_API_TOKEN=
-TTS_API_DAILY_CHARS=50000
-TTS_API_IP_DAILY_CHARS=5000
+TTS_DAILY_CHARS=50000
+TTS_IP_DAILY_CHARS=5000

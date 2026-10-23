@@ -44,15 +44,17 @@ lives in the WebSocket attachment, so it survives hibernation. Acked requests
 receive `{ok:false,error:"RATE_LIMITED"}`; fire-and-forget events are silently
 dropped.
 
-`checkRoom`/`getRoomsByHost`/`requestState` also have a best-effort per-IP budget
-(20 per 10s, held in the Directory isolate) so one address cannot spray many
-sockets. Normal play (one action every few seconds) never reaches the limit.
+`checkRoom`/`getRoomsByHost`/`requestState`/`joinRoom` also have a best-effort
+per-IP budget of 60 per 10s (held in the Directory isolate) so one address cannot
+spray many sockets. Normal play (one action every few seconds) never reaches the
+limit.
 
 ## 4. Abuse and availability caps
 
 | Cap | Default | Where |
 |---|---|---|
-| WebSockets per IP / total | 12 / 1000 | Directory WebSocket upgrade |
+| WebSockets per IP / total | 32 / 1000 | Directory WebSocket upgrade |
+| WebSocket upgrades per IP | 30 per minute | Directory upgrade budget |
 | `createRoom` per IP | 10 per hour | Directory |
 | Rooms total | 500 | Directory |
 | Players per room | 6 (+ host) | `BambooRoom.join` / `playerEvent` |
@@ -107,14 +109,17 @@ selection is allowed only when the stamped sender is the current selector.
 - Text is capped at 500 characters.
 - Google access tokens are cached in KV (`expirationTtl: 3300`) plus isolate memory,
   so token exchanges are ~24/day, not per request.
-- TTS is generated only by the host-authenticated path (`requestNarrator`).
+- TTS is generated only by the host-authenticated `requestNarrator` path and the
+  ops API. Hosting itself is not entitlement-gated in phase 1 (`AUTH_MODE=none`),
+  so the character budget is the code-level backstop.
 - `POST /api/tts` is **disabled by default** (404). It only exists when the
   `TTS_API_TOKEN` secret is set; requests must send
   `Authorization: Bearer <token>` (401 otherwise). This is an ops fallback, not a
   host entitlement path.
-- On a cache miss, the API consumes a character budget from the Directory:
+- On a cache miss, both paths consume a character budget from the Directory:
   50,000 characters/day globally and 5,000/IP/day by default. Cache hits consume
-  nothing. Exceeding either returns `429 TTS_BUDGET_EXCEEDED`.
+  nothing. Exceeding either returns `429 TTS_BUDGET_EXCEEDED` (the room path
+  falls back to the client's local voice).
 - Set the GCP guardrails out-of-band:
   - A hard Cloud Text-to-Speech quota (characters/minute) on the project.
   - A Cloud Billing budget with alert thresholds (50/80/100%) and a Pub/Sub or

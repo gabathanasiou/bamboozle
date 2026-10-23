@@ -11,10 +11,11 @@ export interface Env {
   EMPTY_ROOM_MS?: string;
   /** Enables the ops-only POST /api/tts fallback. Unset = 404. */
   TTS_API_TOKEN?: string;
-  TTS_API_DAILY_CHARS?: string;
-  TTS_API_IP_DAILY_CHARS?: string;
+  TTS_DAILY_CHARS?: string;
+  TTS_IP_DAILY_CHARS?: string;
   MAX_SOCKETS_PER_IP?: string;
   MAX_SOCKETS_TOTAL?: string;
+  MAX_UPGRADES_PER_MINUTE?: string;
   MAX_TOTAL_ROOMS?: string;
   MAX_PLAYERS_PER_ROOM?: string;
   MAX_AUDIENCE_PER_ROOM?: string;
@@ -25,10 +26,11 @@ export const roomGraceMs = (env: Env): number => positiveInt(env.HOST_GRACE_MS, 
 export const playerKickMs = (env: Env): number => positiveInt(env.PLAYER_KICK_MS, 60_000);
 export const emptyRoomMs = (env: Env): number => positiveInt(env.EMPTY_ROOM_MS, 60_000);
 
-export const ttsApiDailyChars = (env: Env): number => positiveInt(env.TTS_API_DAILY_CHARS, 50_000);
-export const ttsApiIpDailyChars = (env: Env): number => positiveInt(env.TTS_API_IP_DAILY_CHARS, 5_000);
-export const maxSocketsPerIp = (env: Env): number => positiveInt(env.MAX_SOCKETS_PER_IP, 12);
+export const ttsDailyChars = (env: Env): number => positiveInt(env.TTS_DAILY_CHARS, 50_000);
+export const ttsIpDailyChars = (env: Env): number => positiveInt(env.TTS_IP_DAILY_CHARS, 5_000);
+export const maxSocketsPerIp = (env: Env): number => positiveInt(env.MAX_SOCKETS_PER_IP, 32);
 export const maxSocketsTotal = (env: Env): number => positiveInt(env.MAX_SOCKETS_TOTAL, 1_000);
+export const maxUpgradesPerMinute = (env: Env): number => positiveInt(env.MAX_UPGRADES_PER_MINUTE, 30);
 export const maxTotalRooms = (env: Env): number => positiveInt(env.MAX_TOTAL_ROOMS, 500);
 export const maxPlayersPerRoom = (env: Env): number => positiveInt(env.MAX_PLAYERS_PER_ROOM, 6);
 export const maxAudiencePerRoom = (env: Env): number => positiveInt(env.MAX_AUDIENCE_PER_ROOM, 20);

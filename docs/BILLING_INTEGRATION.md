@@ -208,84 +208,18 @@ export function useEntitlement() {
 
 ---
 
-## Part 4: Server-Side Changes
+## Part 4: Server-Side Changes — superseded, do not implement
 
-The key insight: **your server doesn't talk to RevenueCat directly**. RevenueCat lives on the client. Your server only validates its own JWTs (which it issued after the client confirmed entitlement).
-
-### 4.1 New Dependency
-
-```bash
-# In /server
-npm install jsonwebtoken
-```
-
-### 4.2 JWT Helpers
-
-```javascript
-// server/entitlement.js
-const jwt = require('jsonwebtoken');
-
-const JWT_SECRET = process.env.JWT_SECRET; // Set in Railway env vars
-
-function issueHostToken(userId) {
-  return jwt.sign(
-    { sub: userId, isEntitled: true, platform: 'android' },
-    JWT_SECRET,
-    { expiresIn: '7d' } // Refresh weekly on app open
-  );
-}
-
-function validateHostToken(token) {
-  try {
-    return jwt.verify(token, JWT_SECRET);
-  } catch {
-    return null;
-  }
-}
-
-module.exports = { issueHostToken, validateHostToken };
-```
-
-### 4.3 New Server Endpoint — superseded, do not implement
-
-> **Superseded — do not implement.** The old `POST /api/get-host-token` endpoint
-> signed a host JWT from a client-supplied `userId` without verifying the
-> RevenueCat/Play purchase. It must not be implemented. Roadmap item 5 replaces it
-> with a short-lived room token minted by the entitlement service and verified by
-> the Worker through `authorizeHost()`.
-
-### 4.4 Gate `createRoom`
-
-```javascript
-// In the createRoom socket handler
-socket.on('createRoom', ({ hostId, token }, callback) => {
-  // Dev bypass
-  if (process.env.NODE_ENV !== 'production') {
-    const roomCode = generateRoomCode();
-    rooms[roomCode] = { hostSocketId: socket.id, hostId, /* ... */ };
-    callback({ roomCode });
-    return;
-  }
-
-  // Production: validate JWT
-  const entitlement = validateHostToken(token);
-  if (!entitlement) {
-    callback({ error: 'ENTITLEMENT_REQUIRED' });
-    return;
-  }
-
-  // Concurrent room cap
-  const hostRoomCount = Object.values(rooms).filter(r => r.hostId === hostId).length;
-  if (hostRoomCount >= 2) {
-    callback({ error: 'MAX_CONCURRENT_ROOMS' });
-    return;
-  }
-
-  const roomCode = generateRoomCode();
-  rooms[roomCode] = { hostSocketId: socket.id, hostId, /* ... */ };
-  callback({ roomCode });
-});
-```
+> **Superseded — do not implement.** The JWT helpers and `createRoom` gate that
+> used to live in this part are retired. They minted a host JWT from client input
+> without independently verifying the RevenueCat/Play purchase, which is
+> equivalent to trusting the client. Do not copy or revive them.
+>
+> Roadmap item 5 is the approved flow: a separate Supabase project owns
+> `profiles`/`entitlements`/`purchases`, RevenueCat/Paddle webhooks write the
+> entitlement, and a Supabase Edge Function mints a **short-lived room token**
+> after verifying it. The Worker verifies that token in `authorizeHost()` with
+> `AUTH_MODE=token`; no host token is minted by the legacy `server/`.
 
 ---
 

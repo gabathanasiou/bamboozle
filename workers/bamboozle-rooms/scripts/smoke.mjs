@@ -203,22 +203,26 @@ async function main() {
   });
 
   await step('server-side player cap', async () => {
-    const capped = await Client.connect();
+    const extraSockets = [];
     for (let i = 0; i < 5; i++) {
-      const result = await capped.ack('joinRoom', {
+      const extra = await Client.connect();
+      const result = await extra.ack('joinRoom', {
         roomCode,
         id: `smoke-extra-${i}`,
         role: 'PLAYER',
       });
       assert(result.success === true, `extra player ${i} joined`);
+      extraSockets.push(extra);
     }
-    const full = await capped.ack('joinRoom', {
+    const fullSocket = await Client.connect();
+    const full = await fullSocket.ack('joinRoom', {
       roomCode,
       id: 'smoke-extra-full',
       role: 'PLAYER',
     });
     assert(full?.error === 'ROOM_FULL', `expected ROOM_FULL, got ${JSON.stringify(full)}`);
-    capped.close();
+    fullSocket.close();
+    extraSockets.forEach((socket) => socket.close());
   });
 
   await step('host reconnect grace + reclaim', async () => {

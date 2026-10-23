@@ -42,7 +42,11 @@ const SENDER_ID_EVENTS = new Set([
 
 const PLAYER_ID_RE = /^[A-Za-z0-9_-]{1,50}$/;
 const HOST_SECRET_RE = /^[A-Za-z0-9_-]{16,128}$/;
-const RESERVED_PLAYER_IDS = new Set(['__proto__', 'constructor', 'prototype']);
+const RESERVED_PLAYER_IDS = new Set([
+  '__proto__',
+  'prototype',
+  ...Object.getOwnPropertyNames(Object.prototype),
+]);
 
 export interface ClientMessage {
   id?: string;
@@ -143,7 +147,7 @@ export const RATE_LIMITED_EVENTS = new Set([
 ]);
 
 /** Read-only lookups also get a per-IP budget, not just a per-socket one. */
-export const READ_EVENTS = new Set(['checkRoom', 'getRoomsByHost', 'requestState']);
+export const READ_EVENTS = new Set(['checkRoom', 'getRoomsByHost', 'requestState', 'joinRoom']);
 
 export function consumeRate(
   state: RateState,
@@ -229,8 +233,15 @@ export function sanitizePlayerEvent(event: unknown): unknown {
     const record = payload as Record<string, unknown>;
     if (typeof record.text === 'string') record.text = sanitize(record.text, MAX_ANSWER_LENGTH);
     if (typeof record.name === 'string') record.name = sanitize(record.name, MAX_NAME_LENGTH);
+    if (typeof record.avatarSeed === 'string') record.avatarSeed = sanitize(record.avatarSeed, MAX_NAME_LENGTH);
+    if (typeof record.category === 'string') record.category = sanitize(record.category, 40);
+    if (typeof record.answerId === 'string') record.answerId = sanitize(record.answerId, 64);
     if (typeof record.senderName === 'string') record.senderName = sanitize(record.senderName, MAX_NAME_LENGTH);
     if (typeof record.senderSeed === 'string') record.senderSeed = sanitize(record.senderSeed, MAX_NAME_LENGTH);
+    // Bots are host-local; a player must not be able to mark itself as one.
+    delete record.isBot;
+    if (typeof record.x === 'number') record.x = Math.max(0, Math.min(100, record.x));
+    if (typeof record.y === 'number') record.y = Math.max(0, Math.min(100, record.y));
   }
   return copy;
 }
@@ -251,6 +262,9 @@ export function stampPlayerEvent(event: unknown, senderId: string): unknown | nu
       : {};
   if (SENDER_ID_EVENTS.has(copy.type as string)) payload.playerId = senderId;
   if (copy.type === 'JOIN_ROOM' || copy.type === 'JOIN_AUDIENCE') payload.id = senderId;
+  if (copy.type === 'SEND_EMOTE' && !['LAUGH', 'SHOCK', 'LOVE', 'TOMATO'].includes(String(payload.type))) {
+    return null;
+  }
   copy.payload = payload;
   return sanitizePlayerEvent(copy);
 }

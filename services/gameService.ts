@@ -210,7 +210,12 @@ export const useGameService = (
 
   // Initialize state with persistence check for HOST
   const [state, setState] = useState<GameState>(() => {
-    const baseState = { ...INITIAL_STATE };
+    const baseState = {
+      ...INITIAL_STATE,
+      players: safeRecord<Player>(),
+      audience: safeRecord<AudienceMember>(),
+      submittedLies: safeRecord<string>(),
+    };
 
     // Load Settings
     try {

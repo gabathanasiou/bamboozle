@@ -70,8 +70,8 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))" \
 - `GCS_BUCKET_NAME = "bamboozle-audio-assets"`
 - `ALLOWED_ORIGINS`: Netlify production, deploy-preview pattern, localhost, Capacitor
 - `HOST_GRACE_MS`, `PLAYER_KICK_MS`, `EMPTY_ROOM_MS` (default 60000; e2e overrides to 8000)
-- `TTS_API_DAILY_CHARS = "50000"`, `TTS_API_IP_DAILY_CHARS = "5000"` (API budget;
-  cache hits are free)
+- `TTS_DAILY_CHARS = "50000"`, `TTS_IP_DAILY_CHARS = "5000"` (shared by the ops
+  API and room narration; cache hits are free)
 - `MAX_SOCKETS_PER_IP`, `MAX_SOCKETS_TOTAL`, `MAX_TOTAL_ROOMS`,
   `MAX_PLAYERS_PER_ROOM`, `MAX_AUDIENCE_PER_ROOM`, `MAX_STATE_BYTES` (abuse caps)
 

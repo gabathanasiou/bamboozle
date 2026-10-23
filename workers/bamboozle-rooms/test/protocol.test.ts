@@ -78,7 +78,7 @@ describe('sanitize', () => {
 describe('identity and player-event authorization', () => {
   it('accepts generated ids and rejects prototype keys', () => {
     expect(validatePlayerId('Abc_123-xyz')).toBe('Abc_123-xyz');
-    for (const id of ['__proto__', 'constructor', 'prototype', 'has space', '', 'x'.repeat(51)]) {
+    for (const id of ['__proto__', 'constructor', 'prototype', 'toString', 'hasOwnProperty', 'has space', '', 'x'.repeat(51)]) {
       expect(validatePlayerId(id)).toBe('');
     }
   });
@@ -117,6 +117,18 @@ describe('identity and player-event authorization', () => {
         'player-1',
       ),
     ).toEqual({ type: 'JOIN_ROOM', payload: { id: 'player-1', name: 'Bob' } });
+
+    expect(
+      stampPlayerEvent(
+        {
+          type: 'JOIN_ROOM',
+          payload: { id: 'victim', avatarSeed: 'x'.repeat(100), isBot: true },
+        },
+        'player-1',
+      ),
+    ).toEqual({ type: 'JOIN_ROOM', payload: { id: 'player-1', avatarSeed: 'x'.repeat(12) } });
+
+    expect(stampPlayerEvent({ type: 'SEND_EMOTE', payload: { type: 'HACK' } }, 'player-1')).toBeNull();
 
     expect(
       stampPlayerEvent(
