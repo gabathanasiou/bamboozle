@@ -3,7 +3,7 @@ import { X, Package, Server, ExternalLink, Loader } from 'lucide-react';
 import { GITHUB_REPO } from '../constants';
 import packageJson from '../package.json';
 
-interface GitHubRelease {
+export interface GitHubRelease {
     id: number;
     tag_name: string;
     name: string;
@@ -12,22 +12,39 @@ interface GitHubRelease {
     html_url: string;
 }
 
+export interface ChangelogPreviewData {
+    serverVersion?: string;
+    releases?: GitHubRelease[];
+    loading?: boolean;
+    error?: string | null;
+}
+
 interface ChangelogModalProps {
     isOpen: boolean;
     onClose: () => void;
     serverUrl: string;
+    /** Design-lab only: deterministic data instead of network fetches. */
+    previewData?: ChangelogPreviewData;
 }
 
-export const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, serverUrl }) => {
-    const [serverVersion, setServerVersion] = useState<string>('Loading...');
-    const [releases, setReleases] = useState<GitHubRelease[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+export const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose, serverUrl, previewData }) => {
+    const [serverVersion, setServerVersion] = useState<string>(previewData?.serverVersion ?? 'Loading...');
+    const [releases, setReleases] = useState<GitHubRelease[]>(previewData?.releases ?? []);
+    const [loading, setLoading] = useState(previewData?.loading ?? true);
+    const [error, setError] = useState<string | null>(previewData?.error ?? null);
 
     const clientVersion = packageJson.version;
 
     useEffect(() => {
         if (!isOpen) return;
+
+        if (previewData) {
+            setServerVersion(previewData.serverVersion ?? 'Unknown');
+            setReleases(previewData.releases ?? []);
+            setLoading(previewData.loading ?? false);
+            setError(previewData.error ?? null);
+            return;
+        }
 
         const fetchData = async () => {
             setLoading(true);
@@ -67,7 +84,7 @@ export const ChangelogModal: React.FC<ChangelogModalProps> = ({ isOpen, onClose,
         };
 
         fetchData();
-    }, [isOpen, serverUrl]);
+    }, [isOpen, serverUrl, previewData]);
 
     if (!isOpen) return null;
 

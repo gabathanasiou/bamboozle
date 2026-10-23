@@ -5,6 +5,7 @@
 class AudioService {
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
+  private muted = false;
 
   constructor() {
     try {
@@ -21,6 +22,21 @@ class AudioService {
     this.ensureContext();
   }
 
+  /**
+   * Mute/unmute every sound without discarding the audio context. Used by the
+   * design lab so clicking around a preview stays silent by default.
+   */
+  public setMuted(muted: boolean) {
+    this.muted = muted;
+    if (this.masterGain) {
+      this.masterGain.gain.value = muted ? 0 : 0.3;
+    }
+  }
+
+  public isMuted() {
+    return this.muted;
+  }
+
   private ensureContext() {
     if (this.ctx && this.ctx.state === 'suspended') {
       this.ctx.resume();
@@ -28,7 +44,7 @@ class AudioService {
   }
 
   play(type: 'CLICK' | 'JOIN' | 'START' | 'TICK' | 'SUCCESS' | 'FAILURE' | 'SWOOSH' | 'DRUMROLL' | 'POP' | 'REVEAL') {
-    if (!this.ctx || !this.masterGain) return;
+    if (!this.ctx || !this.masterGain || this.muted) return;
     this.ensureContext();
     const t = this.ctx.currentTime;
 

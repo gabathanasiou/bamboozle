@@ -9,6 +9,7 @@ export default defineConfig({
       'app/**/*.test.ts',
       'lib/**/*.test.ts',
       'services/**/*.test.ts',
+      'designer/**/*.test.ts',
       'server/**/*.test.ts',
       'workers/**/*.test.ts',
       'i18n/**/*.test.ts',

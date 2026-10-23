@@ -68,6 +68,14 @@ Legacy, local-development only. It still targets the Express `/api/admin/*` rout
 - Framer Motion transitions; avatars generated from a seed.
 - Emote bursts and reveal choreography are client-side and must not be used as sync evidence — the authoritative state is the host's broadcast.
 
+### 6. Design Lab (`designer/`)
+Dev-only `/designer` shell + `/designer/preview` iframe. It mounts the real
+`OnlinePlayerView`, `HostView`, `PlayerView`, and app-shell components with
+deterministic fixtures, so it is 1:1 with production components and breakpoints.
+It provides screen/role/phase controls, content stress, viewport presets, an
+overflow/clipped-text scan, hover inspector, PNG export, URL state, and a
+`window.__bamboozleDesigner` bridge. See `docs/DESIGN_LAB.md`.
+
 ## Repository Structure
 - `services/` — game state, audio, realtime adapter.
 - `views/`, `components/` — host/player UI.

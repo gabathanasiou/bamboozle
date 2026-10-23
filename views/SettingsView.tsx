@@ -1,15 +1,30 @@
 import React, { useState, useEffect } from 'react';
 import { Settings as SettingsIcon, ArrowLeft, BookOpen } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { ChangelogModal } from '../components/ChangelogModal';
+import { ChangelogModal, ChangelogPreviewData } from '../components/ChangelogModal';
 import { GameBackground } from './GameSharedComponents';
 
-export const SettingsView: React.FC = () => {
+export interface SettingsPreviewOptions {
+    useLocalServer?: boolean;
+    usePremiumVoices?: boolean;
+    customServerUrl?: string;
+    showDevSection?: boolean;
+    changelogOpen?: boolean;
+    changelogData?: ChangelogPreviewData;
+}
+
+interface SettingsViewProps {
+    /** Design-lab only: no localStorage writes, no navigation, deterministic modal data. */
+    previewMode?: boolean;
+    preview?: SettingsPreviewOptions;
+}
+
+export const SettingsView: React.FC<SettingsViewProps> = ({ previewMode = false, preview }) => {
     const navigate = useNavigate();
-    const [useLocalServer, setUseLocalServer] = useState(false);
-    const [usePremiumVoices, setUsePremiumVoices] = useState(true);
-    const [customServerUrl, setCustomServerUrl] = useState('http://localhost:8787');
-    const [isChangelogOpen, setIsChangelogOpen] = useState(false);
+    const [useLocalServer, setUseLocalServer] = useState(preview?.useLocalServer ?? false);
+    const [usePremiumVoices, setUsePremiumVoices] = useState(preview?.usePremiumVoices ?? true);
+    const [customServerUrl, setCustomServerUrl] = useState(preview?.customServerUrl ?? 'http://localhost:8787');
+    const [isChangelogOpen, setIsChangelogOpen] = useState(preview?.changelogOpen ?? false);
 
     const [isLoaded, setIsLoaded] = useState(false);
 
@@ -22,6 +37,10 @@ export const SettingsView: React.FC = () => {
     };
 
     useEffect(() => {
+        if (previewMode) {
+            setIsLoaded(true);
+            return;
+        }
         const stored = localStorage.getItem('bamboozle_settings');
         if (stored) {
             try {
@@ -34,11 +53,20 @@ export const SettingsView: React.FC = () => {
             }
         }
         setIsLoaded(true);
-    }, []);
+    }, [previewMode]);
+
+    // Design lab: mirror the configured settings and modal state.
+    useEffect(() => {
+        if (!previewMode) return;
+        setIsChangelogOpen(preview?.changelogOpen ?? false);
+        if (preview?.useLocalServer !== undefined) setUseLocalServer(preview.useLocalServer);
+        if (preview?.usePremiumVoices !== undefined) setUsePremiumVoices(preview.usePremiumVoices);
+        if (preview?.customServerUrl !== undefined) setCustomServerUrl(preview.customServerUrl);
+    }, [previewMode, preview?.changelogOpen, preview?.useLocalServer, preview?.usePremiumVoices, preview?.customServerUrl]);
 
     // Auto-save whenever settings change, but only after initial load
     useEffect(() => {
-        if (!isLoaded) return;
+        if (!isLoaded || previewMode) return;
 
         const settings = {
             useLocalServer,
@@ -46,9 +74,10 @@ export const SettingsView: React.FC = () => {
             customServerUrl
         };
         localStorage.setItem('bamboozle_settings', JSON.stringify(settings));
-    }, [useLocalServer, usePremiumVoices, customServerUrl, isLoaded]);
+    }, [useLocalServer, usePremiumVoices, customServerUrl, isLoaded, previewMode]);
 
     const saveAndExit = () => {
+        if (previewMode) return;
         // Force reload if server config changed, otherwise just navigate
         // Actually, let's just navigate. App.tsx or gameService relies on localStorage read on mount/event.
         // Ideally we might want to reload if server URL changed to reconnect socket? 
@@ -83,7 +112,7 @@ export const SettingsView: React.FC = () => {
 
                 <div className="space-y-8">
                     {/* Developer Settings - Only visible in development */}
-                    {import.meta.env.DEV && (
+                    {import.meta.env.DEV && (!previewMode || preview?.showDevSection !== false) && (
                         <section className="bg-black/20 rounded-2xl p-4">
                             <h2 className="text-xs font-bold text-white/50 uppercase tracking-widest mb-4">Developer Mode</h2>
 
@@ -165,6 +194,7 @@ export const SettingsView: React.FC = () => {
                 isOpen={isChangelogOpen}
                 onClose={() => setIsChangelogOpen(false)}
                 serverUrl={getServerUrl()}
+                previewData={previewMode ? preview?.changelogData : undefined}
             />
         </GameBackground>
     );

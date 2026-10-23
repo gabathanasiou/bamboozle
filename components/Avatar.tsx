@@ -402,7 +402,7 @@ export const Avatar: React.FC<AvatarProps> = ({ seed, size = 100, className = ''
             );
         }
         if (expression === 'THINKING') {
-            return <text x="85" y="30" fontSize="30" fontWeight="bold" fill="#000" className="animate-bounce">?</text>;
+            return <text x="85" y="30" fontSize="30" fontWeight="bold" fill="#000" className="animate-question">?</text>;
         }
         if (expression === 'SMUG') {
             return (
@@ -433,19 +433,21 @@ export const Avatar: React.FC<AvatarProps> = ({ seed, size = 100, className = ''
         >
             {/* Styles for physics animations */}
             <style>{`
-        .animate-bounce-subtle { animation: bounce-subtle 1s infinite alternate ease-in-out; }
-        .animate-shiver { animation: shiver 0.1s infinite; }
-        .animate-shake-angry { animation: shiver 0.05s infinite; }
-        .animate-float { animation: float 3s infinite ease-in-out; }
-        .animate-float-smug { animation: float 4s infinite ease-in-out reverse; }
-        .animate-sway { animation: sway 2s infinite ease-in-out; }
-        .animate-squash-sad { transform-origin: bottom; animation: squash 2s infinite ease-in-out; }
+        .animate-bounce-subtle { animation: bounce-subtle 3.2s infinite alternate ease-in-out; }
+        .animate-shiver { animation: shiver 0.6s infinite; }
+        .animate-shake-angry { animation: shiver 0.45s infinite; }
+        .animate-float { animation: float 5.5s infinite ease-in-out; }
+        .animate-float-smug { animation: float 6.5s infinite ease-in-out reverse; }
+        .animate-sway { animation: sway 4s infinite ease-in-out; }
+        .animate-squash-sad { transform-origin: bottom; animation: squash 4s infinite ease-in-out; }
+        .animate-question { animation: question 3.2s infinite ease-in-out; }
         
-        @keyframes bounce-subtle { from { transform: translateY(0); } to { transform: translateY(-5%); } }
-        @keyframes shiver { 0% { transform: translate(1px, 1px); } 50% { transform: translate(-1px, -1px); } 100% { transform: translate(1px, -1px); } }
-        @keyframes float { 0% { transform: translateY(0); } 50% { transform: translateY(-3%); } 100% { transform: translateY(0); } }
-        @keyframes sway { 0% { transform: rotate(-2deg); } 50% { transform: rotate(2deg); } 100% { transform: rotate(-2deg); } }
-        @keyframes squash { 0% { transform: scaleY(1); } 50% { transform: scaleY(0.95); } 100% { transform: scaleY(1); } }
+        @keyframes bounce-subtle { from { transform: translateY(0); } to { transform: translateY(-2%); } }
+        @keyframes shiver { 0% { transform: translate(0.5px, 0.5px); } 50% { transform: translate(-0.5px, -0.5px); } 100% { transform: translate(0.5px, -0.5px); } }
+        @keyframes float { 0% { transform: translateY(0); } 50% { transform: translateY(-1.5%); } 100% { transform: translateY(0); } }
+        @keyframes sway { 0% { transform: rotate(-1deg); } 50% { transform: rotate(1deg); } 100% { transform: rotate(-1deg); } }
+        @keyframes squash { 0% { transform: scaleY(1); } 50% { transform: scaleY(0.98); } 100% { transform: scaleY(1); } }
+        @keyframes question { 0% { transform: translateY(0); } 50% { transform: translateY(-3px); } 100% { transform: translateY(0); } }
       `}</style>
 
             {/* Main Avatar SVG */}

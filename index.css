@@ -72,3 +72,28 @@ body,
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.4);
 }
+
+/* Calm, slow bounce for chrome (Tailwind's default is 1s, which reads as jitter). */
+@keyframes bounce-slow {
+  0%, 100% { transform: translateY(-8%); animation-timing-function: cubic-bezier(0.8, 0, 1, 1); }
+  50% { transform: translateY(0); animation-timing-function: cubic-bezier(0, 0, 0.2, 1); }
+}
+
+.animate-bounce-slow {
+  animation: bounce-slow 3.2s infinite;
+}
+
+/* Respect the OS reduced-motion preference everywhere. The design lab's
+   "Reduce motion: off" toggle sets data-designer-force-motion on the iframe
+   document so the preview can still show the full animation when needed. */
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-designer-force-motion]) *,
+  html:not([data-designer-force-motion]) *::before,
+  html:not([data-designer-force-motion]) *::after {
+    animation-duration: 0.001ms !important;
+    animation-delay: 0s !important;
+    transition-duration: 0.001ms !important;
+    transition-delay: 0s !important;
+    scroll-behavior: auto !important;
+  }
+}

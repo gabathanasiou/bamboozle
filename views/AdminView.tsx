@@ -43,11 +43,24 @@ const getQuestionText = (questions: any[], phrasesObj: any): string[] => {
     return texts;
 };
 
-export const AdminView: React.FC = () => {
-    const [tab, setTab] = useState<'ACTIONS' | 'PROGRESS' | 'FAILURES'>('ACTIONS');
-    const [status, setStatus] = useState<any>(null);
-    const [failures, setFailures] = useState<any[]>([]);
-    const [logs, setLogs] = useState<string[]>([]);
+export interface AdminPreviewData {
+    status?: any;
+    failures?: any[];
+    logs?: string[];
+}
+
+interface AdminViewProps {
+    /** Design-lab only: no polling/fetches, deterministic data. */
+    previewMode?: boolean;
+    initialTab?: 'ACTIONS' | 'PROGRESS' | 'FAILURES';
+    previewData?: AdminPreviewData;
+}
+
+export const AdminView: React.FC<AdminViewProps> = ({ previewMode = false, initialTab = 'ACTIONS', previewData }) => {
+    const [tab, setTab] = useState<'ACTIONS' | 'PROGRESS' | 'FAILURES'>(initialTab);
+    const [status, setStatus] = useState<any>(previewData?.status ?? null);
+    const [failures, setFailures] = useState<any[]>(previewData?.failures ?? []);
+    const [logs, setLogs] = useState<string[]>(previewData?.logs ?? []);
     const [isLoading, setIsLoading] = useState(false);
     const [isTestMode, setIsTestMode] = useState(true);
 
@@ -65,15 +78,29 @@ export const AdminView: React.FC = () => {
 
     const serverUrl = getServerUrl();
 
+    // Design lab: follow the selected tab/data without remounting the screen.
+    useEffect(() => {
+        if (previewMode) setTab(initialTab);
+    }, [previewMode, initialTab]);
+
+    useEffect(() => {
+        if (!previewMode) return;
+        setStatus(previewData?.status ?? null);
+        setFailures(previewData?.failures ?? []);
+        setLogs(previewData?.logs ?? []);
+    }, [previewMode, previewData]);
+
     // Poll status
     useEffect(() => {
+        if (previewMode) return;
         const interval = setInterval(() => {
             fetchAdminStatus();
         }, 1000);
         return () => clearInterval(interval);
-    }, [serverUrl]);
+    }, [serverUrl, previewMode]);
 
     const fetchAdminStatus = async () => {
+        if (previewMode) return;
         try {
             const res = await fetch(`${serverUrl}/api/admin/status`);
             const data = await res.json();
@@ -84,6 +111,7 @@ export const AdminView: React.FC = () => {
     };
 
     const fetchFailures = async () => {
+        if (previewMode) return;
         try {
             const res = await fetch(`${serverUrl}/api/admin/failures`);
             const data = await res.json();
@@ -94,12 +122,14 @@ export const AdminView: React.FC = () => {
     };
 
     useEffect(() => {
+        if (previewMode) return;
         if (tab === 'FAILURES') {
             fetchFailures();
         }
-    }, [tab]);
+    }, [tab, previewMode]);
 
     const handleGenerate = async (type: 'PHRASES' | 'QUESTIONS', lang: 'en' | 'el') => {
+        if (previewMode) return;
         setIsLoading(true);
         let items: string[] = [];
 
@@ -133,6 +163,7 @@ export const AdminView: React.FC = () => {
     };
 
     const handleRetry = async () => {
+        if (previewMode) return;
         try {
             await fetch(`${serverUrl}/api/admin/retry`, { method: 'POST' });
             setLogs(prev => [...prev, "Started Retry Job"]);
@@ -143,6 +174,7 @@ export const AdminView: React.FC = () => {
     };
 
     const handleClearCache = async () => {
+        if (previewMode) return;
         if (!confirm("Are you sure? This will delete all files in the bucket!")) return;
         try {
             const res = await fetch(`${serverUrl}/api/admin/clear-cache`, { method: 'POST' });
@@ -154,6 +186,7 @@ export const AdminView: React.FC = () => {
     };
 
     const handleClearFailures = async () => {
+        if (previewMode) return;
         try {
             await fetch(`${serverUrl}/api/admin/clear-failures`, { method: 'POST' });
             setFailures([]);

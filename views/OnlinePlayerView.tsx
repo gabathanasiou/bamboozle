@@ -19,6 +19,13 @@ interface OnlinePlayerViewProps {
     onHome: () => void;
     hostDisconnected?: boolean;
     roomClosed?: boolean;
+    /** Design-lab only: hide dev chrome and keep the join flow deterministic. */
+    previewMode?: boolean;
+    showDevChrome?: boolean;
+    initialJoinStep?: 'CODE' | 'NAME';
+    previewRejoinCode?: string | null;
+    previewJoinName?: string;
+    previewCodeError?: string;
 }
 
 const AvatarStrip = React.memo(({ players, onToggleReactions }: {
@@ -44,7 +51,21 @@ const AvatarStrip = React.memo(({ players, onToggleReactions }: {
     );
 });
 
-export const OnlinePlayerView: React.FC<OnlinePlayerViewProps> = ({ state, actions, playerId, isSpeaking, onHome, hostDisconnected = false, roomClosed = false }) => {
+export const OnlinePlayerView: React.FC<OnlinePlayerViewProps> = ({
+    state,
+    actions,
+    playerId,
+    isSpeaking,
+    onHome,
+    hostDisconnected = false,
+    roomClosed = false,
+    previewMode = false,
+    showDevChrome = false,
+    initialJoinStep,
+    previewRejoinCode,
+    previewJoinName,
+    previewCodeError,
+}) => {
     const me = state.players[playerId];
     const amAudience = state.audience[playerId];
     const isVip = state.vipId === playerId;
@@ -89,11 +110,11 @@ export const OnlinePlayerView: React.FC<OnlinePlayerViewProps> = ({ state, actio
     }, [state.roundAnswers, state.phase]);
 
     // Entry Flow State
-    const [joinStep, setJoinStep] = useState<'CODE' | 'NAME'>('CODE');
-    const [inputCode, setInputCode] = useState(state.roomCode || '');
-    const [joinName, setJoinName] = useState('');
-    const [codeError, setCodeError] = useState('');
-    const [rejoinCode, setRejoinCode] = useState<string | null>(null);
+    const [joinStep, setJoinStep] = useState<'CODE' | 'NAME'>(initialJoinStep ?? 'CODE');
+    const [inputCode, setInputCode] = useState(previewMode ? '' : (state.roomCode || ''));
+    const [joinName, setJoinName] = useState(previewJoinName ?? '');
+    const [codeError, setCodeError] = useState(previewCodeError ?? '');
+    const [rejoinCode, setRejoinCode] = useState<string | null>(previewRejoinCode ?? null);
 
     // Mobile Reaction Bar State - Only affects "Mobile" (<768px)
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
@@ -123,7 +144,7 @@ export const OnlinePlayerView: React.FC<OnlinePlayerViewProps> = ({ state, actio
     // Check for rejoinable session
     useEffect(() => {
         // console.log('[OnlinePlayerView] Session check effect. isJoined:', isJoined, 'joinStep:', joinStep, 'actions available:', !!actions);
-        if (isJoined || joinStep !== 'CODE') return;
+        if (previewMode || isJoined || joinStep !== 'CODE') return;
 
         const storedCode = localStorage.getItem('bamboozle_room_code');
         // console.log('[OnlinePlayerView] Stored room code in localStorage:', storedCode);
@@ -137,15 +158,16 @@ export const OnlinePlayerView: React.FC<OnlinePlayerViewProps> = ({ state, actio
                 }
             });
         }
-    }, [isJoined, joinStep, actions]);
+    }, [previewMode, isJoined, joinStep, actions]);
 
-    // Auto-Join if room code exists
+    // Auto-Join if room code exists (not in the design lab: the scene chooses the step)
     useEffect(() => {
+        if (previewMode) return;
         if (state.roomCode && joinStep === 'CODE') {
             setInputCode(state.roomCode);
             setJoinStep('NAME');
         }
-    }, [state.roomCode, joinStep]);
+    }, [previewMode, state.roomCode, joinStep]);
 
     const handleEmote = (type: 'LAUGH' | 'SHOCK' | 'LOVE' | 'TOMATO') => {
         // Cooldown: ignore if fired within 800ms of last emote (double-tap / event bubbling)
@@ -378,7 +400,7 @@ export const OnlinePlayerView: React.FC<OnlinePlayerViewProps> = ({ state, actio
 
     return (
         <GameBackground className="flex flex-col h-[100svh] w-full overflow-hidden relative">
-            <DevPauseButton isPaused={state.isPaused} onToggle={actions.sendTogglePause} />
+            {(!previewMode || showDevChrome) && <DevPauseButton isPaused={state.isPaused} onToggle={actions.sendTogglePause} />}
             <EmotePopupLayer emotes={state.emotes} />
             <TopBar />
 
@@ -517,7 +539,7 @@ export const OnlinePlayerView: React.FC<OnlinePlayerViewProps> = ({ state, actio
                                                     <Home size={14} /> Home
                                                 </button>
                                             </div>
-                                            {import.meta.env.DEV && (
+                                            {import.meta.env.DEV && (!previewMode || showDevChrome) && (
                                                 <button
                                                     onClick={actions.addAudienceBot}
                                                     className="w-full bg-indigo-600/30 hover:bg-indigo-600/50 py-2 rounded-xl text-[10px] font-bold uppercase border border-white/10"
@@ -599,7 +621,7 @@ export const OnlinePlayerView: React.FC<OnlinePlayerViewProps> = ({ state, actio
 
                             <AnimatePresence>
                                 {showTruthWarning && (
-                                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="bg-red-500 text-white px-4 py-2 rounded-full font-bold uppercase text-xs shadow-lg animate-bounce">
+                                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="bg-red-500 text-white px-4 py-2 rounded-full font-bold uppercase text-xs shadow-lg animate-bounce-slow">
                                         {getText(state.language, 'PROMPT_CANNOT_TRUTH')}
                                     </motion.div>
                                 )}
@@ -727,7 +749,7 @@ export const OnlinePlayerView: React.FC<OnlinePlayerViewProps> = ({ state, actio
                                     exit={{ opacity: 0, y: 10 }}
                                     className="absolute bottom-4 left-0 right-0 flex justify-center pointer-events-none z-20"
                                 >
-                                    <div className="bg-black/80 backdrop-blur-md text-white/90 pl-4 pr-3 py-2 rounded-full text-xs font-bold uppercase flex items-center gap-2 border border-white/20 shadow-xl animate-bounce">
+                                    <div className="bg-black/80 backdrop-blur-md text-white/90 pl-4 pr-3 py-2 rounded-full text-xs font-bold uppercase flex items-center gap-2 border border-white/20 shadow-xl animate-bounce-slow">
                                         {getText(state.language, 'VOTE_SCROLL')} <ChevronDown size={14} className="animate-pulse" />
                                     </div>
                                 </motion.div>

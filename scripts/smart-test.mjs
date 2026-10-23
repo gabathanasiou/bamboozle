@@ -21,6 +21,7 @@ const CANARY = ['smoke'];
 const RULES = [
   // tooling / tests don't touch the app under test
   { g: 'scripts/**', s: [] },
+  { g: 'designer/**', s: [] },
   { g: '**/*.test.ts', s: [] },
   // core/config — full suite
   { g: 'package*.json', s: 'ALL' },
@@ -70,6 +71,7 @@ function isRelevant(f) {
   return (
     f.startsWith('src/') || f.startsWith('server/') || f.startsWith('workers/') ||
     f.startsWith('lib/') || f.startsWith('app/') || f.startsWith('e2e/') || f.startsWith('scripts/') ||
+    f.startsWith('designer/') ||
     /^(package(?:-lock)?\.json|vite\.config\.[cm]?[jt]s?$|playwright[\w-]*\.config\.ts$|vitest\.config\.[cm]?[jt]s?$|tsconfig[\w-]*\.json$|index\.html)$/.test(f)
   );
 }

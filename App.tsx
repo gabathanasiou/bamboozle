@@ -3,19 +3,24 @@ import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
 import { useGameService } from './services/gameService';
 import { HostView } from './views/HostView';
 import { PlayerView } from './views/PlayerView';
-import { Monitor, Smartphone, SplitSquareHorizontal, Globe, Settings as SettingsIcon } from 'lucide-react';
 import { OnlinePlayerView } from './views/OnlinePlayerView';
 import { SettingsView } from './views/SettingsView';
 import { AdminView } from './views/AdminView';
+import { HomeView } from './views/HomeView';
+import { OfflineView } from './views/OfflineView';
 import { getText } from './i18n';
 import { Avatar } from './components/Avatar';
 import { NARRATOR_SEED } from './constants';
 import { App as CapApp } from '@capacitor/app';
 import { Network } from '@capacitor/network';
 import { Expression } from './types';
-import { GameBackground, RoomManagerModal } from './views/GameSharedComponents';
-import { WifiOff, RefreshCcw } from 'lucide-react';
+import { RoomManagerModal } from './views/GameSharedComponents';
 import { SplashScreen } from '@capacitor/splash-screen';
+
+const designerEnabled = import.meta.env.DEV || import.meta.env.VITE_DESIGNER === '1';
+const DesignerView = React.lazy(() => import('./designer/DesignerView').then((module) => ({ default: module.DesignerView })));
+const PreviewSurface = React.lazy(() => import('./designer/PreviewSurface').then((module) => ({ default: module.PreviewSurface })));
+const DesignerFallback = () => <div className="h-screen w-full bg-[#0b0f19]" />;
 
 const App: React.FC = () => {
   const [isOnline, setIsOnline] = useState(true);
@@ -107,6 +112,12 @@ const App: React.FC = () => {
         <Route path="/" element={<AppContent />} />
         <Route path="/settings" element={<SettingsView />} />
         {import.meta.env.DEV && <Route path="/admin" element={<AdminView />} />}
+        {designerEnabled && (
+          <>
+            <Route path="/designer" element={<React.Suspense fallback={<DesignerFallback />}><DesignerView /></React.Suspense>} />
+            <Route path="/designer/preview" element={<React.Suspense fallback={<DesignerFallback />}><PreviewSurface /></React.Suspense>} />
+          </>
+        )}
       </Routes>
     </BrowserRouter>
   );
@@ -143,7 +154,7 @@ const AppContent: React.FC = () => {
 
   return (
     <div className="h-screen w-full overflow-hidden">
-      {view === 'HOME' && <HomeSelector onSelect={handleSelectView} isMobile={isMobile} language={language} setLanguage={handleSetLanguage} />}
+      {view === 'HOME' && <HomeScreen onSelect={handleSelectView} isMobile={isMobile} language={language} setLanguage={handleSetLanguage} />}
       {view === 'HOST' && (
         <div className="h-full w-full">
           <GameHostWrapper
@@ -161,8 +172,7 @@ const AppContent: React.FC = () => {
   );
 };
 
-const HomeSelector = ({ onSelect, isMobile, language, setLanguage }: { onSelect: (v: 'HOST' | 'PLAYER' | 'TEST', roomCode?: string) => void, isMobile: boolean, language: 'en' | 'el', setLanguage: (l: 'en' | 'el') => void }) => {
-  const toggleLanguage = () => setLanguage(language === 'en' ? 'el' : 'en');
+const HomeScreen = ({ onSelect, isMobile, language, setLanguage }: { onSelect: (v: 'HOST' | 'PLAYER' | 'TEST', roomCode?: string) => void, isMobile: boolean, language: 'en' | 'el', setLanguage: (l: 'en' | 'el') => void }) => {
   const navigate = useNavigate();
 
   // Room Management Logic
@@ -191,74 +201,28 @@ const HomeSelector = ({ onSelect, isMobile, language, setLanguage }: { onSelect:
     });
   };
 
-  // Lively Narrator Logic
-  const [narratorExpression, setNarratorExpression] = useState<Expression>('HAPPY');
-  useEffect(() => {
-    const timer = setInterval(() => {
-      const exprs: Expression[] = ['HAPPY', 'SMUG', 'THINKING', 'HAPPY', 'HAPPY'];
-      setNarratorExpression(exprs[Math.floor(Math.random() * exprs.length)]);
-    }, 3000);
-    return () => clearInterval(timer);
-  }, []);
-
   return (
-    <GameBackground className="flex flex-col items-center justify-center px-5 py-4 md:p-8 overflow-hidden h-[100dvh]">
-      <div className="relative z-10 w-full max-w-md md:max-w-5xl flex flex-col items-center h-full min-h-0 justify-center gap-0">
-        <div className="relative mb-2 md:mb-4 transform hover:scale-105 transition-transform duration-300 cursor-pointer" onClick={() => setNarratorExpression('SHOCKED')}>
-          <div className="absolute inset-0 bg-yellow-400 blur-3xl opacity-20 animate-pulse"></div>
-          <div className="filter drop-shadow-lg animate-float">
-            <Avatar seed={NARRATOR_SEED} size={120} expression={narratorExpression} className="!w-24 !h-24 md:!w-32 md:!h-32" />
-          </div>
-        </div>
+    <>
+      <HomeView
+        language={language}
+        isMobile={isMobile}
+        showTestMode={!isMobile && import.meta.env.DEV}
+        onHost={handleHostClick}
+        onJoin={() => onSelect('PLAYER')}
+        onSettings={() => navigate('/settings')}
+        onToggleLanguage={() => setLanguage(language === 'en' ? 'el' : 'en')}
+        onTestMode={() => onSelect('TEST')}
+      />
 
-        <h1 className="text-4xl md:text-5xl lg:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-b from-yellow-300 to-yellow-600 mb-1 drop-shadow-xl tracking-tighter uppercase transform -rotate-2 text-center">
-          Bamboozle
-        </h1>
-
-        <p className="mb-6 text-white/50 text-xs font-bold uppercase tracking-[0.2em] text-center">
-          {getText(language, 'HOME_TAGLINE')}
-        </p>
-
-        <div className="w-full space-y-3 relative z-20">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
-            <button onClick={handleHostClick} className="group bg-purple-600 hover:bg-purple-500 active:scale-95 active:brightness-90 text-white p-4 rounded-xl flex flex-col items-center shadow-xl transition-all duration-150">
-              <div className="bg-white/20 p-3 rounded-full mb-2 group-hover:scale-110 transition-transform">
-                <Monitor className="text-white w-6 h-6" />
-              </div>
-              <h2 className="text-xl font-black mb-0.5 uppercase tracking-wide">{getText(language, 'HOME_HOST_GAME')}</h2>
-              <p className="text-[10px] font-bold opacity-80 uppercase tracking-widest">{isMobile ? getText(language, 'HOME_HOST_DESC_MOBILE') : getText(language, 'HOME_HOST_DESC_DESKTOP')}</p>
-            </button>
-
-            <button onClick={() => onSelect('PLAYER')} className="group bg-blue-600 hover:bg-blue-500 active:scale-95 active:brightness-90 text-white p-4 rounded-xl flex flex-col items-center shadow-xl transition-all duration-150">
-              <div className="bg-white/20 p-3 rounded-full mb-2 group-hover:scale-110 transition-transform">
-                <Smartphone className="text-white w-6 h-6" />
-              </div>
-              <h2 className="text-xl font-black mb-0.5 uppercase tracking-wide">{getText(language, 'HOME_JOIN_GAME')}</h2>
-              <p className="text-[10px] font-bold opacity-80 uppercase tracking-widest">{getText(language, 'HOME_JOIN_DESC')}</p>
-            </button>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <button onClick={toggleLanguage} className="group bg-pink-600 hover:bg-pink-500 active:scale-95 active:brightness-90 text-white py-3 rounded-xl flex flex-col items-center shadow-xl transition-all duration-150">
-              <Globe className="text-pink-200 group-hover:text-white w-5 h-5 mb-1" />
-              <h2 className="text-xs font-black uppercase tracking-wide">{language === 'en' ? 'ENGLISH' : 'ΕΛΛΗΝΙΚΑ'}</h2>
-            </button>
-            <button onClick={() => navigate('/settings')} className="group bg-gray-700 hover:bg-gray-600 active:scale-95 active:brightness-90 text-white py-3 rounded-xl flex flex-col items-center shadow-xl transition-all duration-150">
-              <SettingsIcon className="text-gray-300 group-hover:text-white w-5 h-5 mb-1" />
-              <h2 className="text-xs font-black uppercase tracking-wide">Settings</h2>
-            </button>
-          </div>
-
-          {!isMobile && import.meta.env.DEV && (
-            <div className="grid grid-cols-1">
-              <button onClick={() => onSelect('TEST')} className="group bg-orange-600 hover:bg-orange-500 active:scale-95 active:brightness-90 text-white p-3 rounded-xl flex items-center justify-center gap-3 shadow-xl transition-all duration-150">
-                <SplitSquareHorizontal className="text-orange-200 w-5 h-5" />
-                <h2 className="text-base font-black uppercase tracking-wide">{getText(language, 'HOME_TEST_MODE')}</h2>
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
+      {import.meta.env.DEV && !isMobile && (
+        <button
+          onClick={() => navigate('/designer')}
+          className="fixed bottom-3 right-3 z-50 rounded-lg border border-yellow-400/40 bg-black/70 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-yellow-300 shadow-lg backdrop-blur hover:bg-black/90"
+          title="Open the design lab"
+        >
+          Design Lab
+        </button>
+      )}
 
       {showRoomManager && (
         <RoomManagerModal
@@ -269,7 +233,7 @@ const HomeSelector = ({ onSelect, isMobile, language, setLanguage }: { onSelect:
           onRejoin={(code) => { setShowRoomManager(false); onSelect('HOST', code); }}
         />
       )}
-    </GameBackground>
+    </>
   );
 };
 
@@ -322,7 +286,7 @@ const GameHostWrapper = ({ onHome, debugMode, language, setLanguage, targetRoomC
         <div className="relative z-10 flex flex-col items-center translate-y-[-10%]">
           <div className="relative mb-8 transform scale-125 md:scale-150 transition-transform duration-500">
             <div className="absolute inset-0 bg-yellow-400 blur-3xl opacity-20 animate-pulse"></div>
-            <div className="filter drop-shadow-2xl animate-bounce" style={{ animationDuration: '3s' }}>
+            <div className="filter drop-shadow-2xl animate-bounce-slow">
               <Avatar seed={NARRATOR_SEED} size={180} expression={loadingExpression} />
             </div>
           </div>
@@ -330,9 +294,9 @@ const GameHostWrapper = ({ onHome, debugMode, language, setLanguage, targetRoomC
             {getText(language || 'en', 'GAME_LOADING')}
           </h2>
           <div className="flex gap-3">
-            <div className="w-3 h-3 md:w-4 md:h-4 bg-yellow-400 rounded-full animate-bounce shadow-lg shadow-yellow-400/50" style={{ animationDelay: '0s', animationDuration: '1s' }} />
-            <div className="w-3 h-3 md:w-4 md:h-4 bg-yellow-400 rounded-full animate-bounce shadow-lg shadow-yellow-400/50" style={{ animationDelay: '0.15s', animationDuration: '1s' }} />
-            <div className="w-3 h-3 md:w-4 md:h-4 bg-yellow-400 rounded-full animate-bounce shadow-lg shadow-yellow-400/50" style={{ animationDelay: '0.3s', animationDuration: '1s' }} />
+            <div className="w-3 h-3 md:w-4 md:h-4 bg-yellow-400 rounded-full animate-bounce-slow shadow-lg shadow-yellow-400/50" style={{ animationDelay: '0s' }} />
+            <div className="w-3 h-3 md:w-4 md:h-4 bg-yellow-400 rounded-full animate-bounce-slow shadow-lg shadow-yellow-400/50" style={{ animationDelay: '0.15s' }} />
+            <div className="w-3 h-3 md:w-4 md:h-4 bg-yellow-400 rounded-full animate-bounce-slow shadow-lg shadow-yellow-400/50" style={{ animationDelay: '0.3s' }} />
           </div>
           <p className="mt-6 text-white/40 text-xs md:text-sm font-bold uppercase tracking-[0.2em] text-center">
             {state.roomCode ? 'Setting up...' : 'Connecting...'}
@@ -361,41 +325,6 @@ const GamePlayerWrapper = ({ onHome, language, setLanguage }: { onHome: () => vo
     return <OnlinePlayerView state={state} actions={actions} playerId={playerId} isSpeaking={isSpeaking} onHome={onHome} hostDisconnected={hostDisconnected} roomClosed={roomClosed} />;
   }
   return <PlayerView state={state} actions={actions} playerId={playerId} hostDisconnected={hostDisconnected} roomClosed={roomClosed} onHome={onHome} />;
-};
-
-const OfflineView = ({ onRetry }: { onRetry: () => void }) => {
-  return (
-    <GameBackground className="h-screen w-full flex flex-col items-center justify-center p-6 text-center">
-      <div className="relative mb-8 transform scale-125">
-        <div className="absolute inset-0 bg-red-400 blur-3xl opacity-20 animate-pulse"></div>
-        <div className="filter drop-shadow-2xl">
-          <Avatar seed={NARRATOR_SEED} size={150} expression="SHOCKED" />
-        </div>
-        <div className="absolute -bottom-2 -right-2 bg-red-500 p-3 rounded-full shadow-lg border-2 border-white animate-bounce">
-          <WifiOff className="w-6 h-6 text-white" />
-        </div>
-      </div>
-
-      <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white to-gray-400 mb-2 uppercase tracking-tight">
-        Bamboozled!
-      </h1>
-      <p className="text-xl font-bold text-yellow-400 mb-8 uppercase tracking-widest">
-        Connection Lost
-      </p>
-
-      <p className="text-white/60 mb-10 max-w-xs mx-auto font-medium leading-relaxed">
-        Bamboozle is an online multiplayer game and requires an internet connection to play with friends! Please reconnect to continue.
-      </p>
-
-      <button
-        onClick={onRetry}
-        className="group bg-white text-purple-900 px-8 py-4 rounded-2xl font-black uppercase tracking-widest flex items-center gap-3 shadow-2xl hover:bg-yellow-400 hover:scale-105 active:scale-95 transition-all duration-200"
-      >
-        <RefreshCcw className="w-5 h-5 group-hover:rotate-180 transition-transform duration-500" />
-        Retry Connection
-      </button>
-    </GameBackground>
-  );
 };
 
 export default App;

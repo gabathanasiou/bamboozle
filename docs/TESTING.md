@@ -77,6 +77,10 @@ End the task with a short numbered check (exact clicks + expected result):
 Automate only when a silent break is plausible: data loss, wrong computed value,
 persistence/round-trip, cross-surface propagation, or geometry that only fails at scale.
 
+Use the dev-only **Design Lab** (`npm run dev` → `/designer`) as the manual visual
+harness for every screen/state, role, viewport, and long-copy stress. Its fixture
+coverage is unit-tested; visual checks stay manual (`docs/DESIGN_LAB.md`).
+
 ## Selector strategy (keeps tests from drifting)
 
 Prefer, in order: `getByRole` / `getByLabel` / `getByText` → `getByTestId` → `[data-*]` →

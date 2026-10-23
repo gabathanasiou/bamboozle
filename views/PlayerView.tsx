@@ -14,9 +14,27 @@ interface PlayerViewProps {
     hostDisconnected?: boolean;
     roomClosed?: boolean;
     onHome?: () => void;
+    /** Design-lab only: deterministic join flow and no page reloads. */
+    previewMode?: boolean;
+    initialJoinStep?: 'CODE' | 'NAME';
+    previewRejoinCode?: string | null;
+    previewJoinName?: string;
+    previewCodeError?: string;
 }
 
-export const PlayerView: React.FC<PlayerViewProps> = ({ state, actions, playerId, hostDisconnected, roomClosed, onHome }) => {
+export const PlayerView: React.FC<PlayerViewProps> = ({
+    state,
+    actions,
+    playerId,
+    hostDisconnected,
+    roomClosed,
+    onHome,
+    previewMode = false,
+    initialJoinStep,
+    previewRejoinCode,
+    previewJoinName,
+    previewCodeError,
+}) => {
     // Game Interactions State
     const [lieText, setLieText] = useState('');
     const [showTruthWarning, setShowTruthWarning] = useState(false);
@@ -24,14 +42,16 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ state, actions, playerId
     const [selectedRounds, setSelectedRounds] = useState(3);
 
     // Entry Flow State
-    const [joinStep, setJoinStep] = useState<'CODE' | 'NAME'>('CODE');
+    const [joinStep, setJoinStep] = useState<'CODE' | 'NAME'>(initialJoinStep ?? 'CODE');
     const [inputCode, setInputCode] = useState('');
-    const [joinName, setJoinName] = useState('');
-    const [codeError, setCodeError] = useState('');
+    const [joinName, setJoinName] = useState(previewJoinName ?? '');
+    const [codeError, setCodeError] = useState(previewCodeError ?? '');
     // Show a stored session immediately. The old code only showed the card
     // after checkRoomExists acked; on a fresh page that ack could be missed
     // because the socket was not constructed yet, which hid the rejoin entry.
     const [rejoinCode, setRejoinCode] = useState<string | null>(() => {
+        if (previewRejoinCode !== undefined) return previewRejoinCode;
+        if (previewMode) return null;
         try {
             const stored = localStorage.getItem('bamboozle_room_code');
             return stored && /^[A-Z]{4}$/.test(stored) ? stored : null;
@@ -47,7 +67,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ state, actions, playerId
     // Check for rejoinable session
     useEffect(() => {
         import.meta.env.DEV && console.log('[PlayerView] Session check effect. isJoined:', isJoined, 'joinStep:', joinStep, 'actions available:', !!actions);
-        if (isJoined || joinStep !== 'CODE') return;
+        if (previewMode || isJoined || joinStep !== 'CODE') return;
 
         const storedCode = localStorage.getItem('bamboozle_room_code');
         import.meta.env.DEV && console.log('[PlayerView] Stored room code in localStorage:', storedCode);
@@ -66,7 +86,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ state, actions, playerId
         } else if (!storedCode) {
             setRejoinCode(null);
         }
-    }, [isJoined, joinStep, actions]);
+    }, [previewMode, isJoined, joinStep, actions]);
 
     // Reset lie text between rounds
     useEffect(() => {
@@ -241,7 +261,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ state, actions, playerId
                             <button
                                 onClick={() => {
                                     sfx.play('CLICK');
-                                    window.location.reload();
+                                    if (!previewMode) window.location.reload();
                                 }}
                                 className="w-full bg-white/10 hover:bg-white/20 text-white py-4 rounded-2xl font-bold text-lg border border-white/20 uppercase tracking-wide transform active:scale-95 transition-all flex items-center justify-center gap-2"
                             >
@@ -591,7 +611,7 @@ export const PlayerView: React.FC<PlayerViewProps> = ({ state, actions, playerId
                             <button onClick={() => { sfx.play('CLICK'); actions.sendRestart(); }} className="w-full bg-green-500 hover:bg-green-600 text-white py-5 rounded-2xl font-black text-xl shadow-lg flex items-center justify-center gap-2 uppercase active:scale-95 transition-transform">
                                 <RotateCcw size={24} strokeWidth={3} /> Play Again
                             </button>
-                            <button onClick={() => window.location.reload()} className="w-full bg-white/10 hover:bg-white/20 text-white py-4 rounded-2xl font-bold text-lg border border-white/5 flex items-center justify-center gap-2 uppercase active:scale-95 transition-transform">
+                            <button onClick={() => { if (!previewMode) window.location.reload(); }} className="w-full bg-white/10 hover:bg-white/20 text-white py-4 rounded-2xl font-bold text-lg border border-white/5 flex items-center justify-center gap-2 uppercase active:scale-95 transition-transform">
                                 <Home size={20} /> Exit Room
                             </button>
                         </div>
