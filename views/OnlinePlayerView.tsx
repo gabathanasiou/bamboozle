@@ -587,21 +587,21 @@ export const OnlinePlayerView: React.FC<OnlinePlayerViewProps> = ({
                 {/* 3. WRITING (And INTRO) */}
                 {(state.phase === GamePhase.WRITING || state.phase === GamePhase.INTRO) && (
                     <div className="flex-1 flex flex-col items-center justify-center p-4 min-h-0 w-full">
-                        <div className="w-full max-w-md flex flex-col items-center gap-4">
+                        <div className="w-full max-w-md md:max-w-2xl flex flex-col items-center gap-4">
 
                             {/* Stats Header */}
                             <div className="w-full flex items-center justify-between px-1 pb-1 relative z-20 flex-shrink-0">
                                 <div className="flex items-center gap-2">
-                                    <div className="bg-purple-600/90 text-white text-[10px] font-black uppercase px-2 py-1 rounded-lg border-2 border-purple-400 shadow-sm">
+                                    <div className="bg-purple-600/90 text-white text-[10px] md:text-xl font-black uppercase px-2 py-1 rounded-lg border-2 border-purple-400 shadow-sm">
                                         {isFinalRound ? getText(state.language, 'GAME_FINAL_ROUND') : getText(state.language, 'GAME_ROUND', { current: state.currentRound, total: state.totalRounds })}
                                     </div>
                                     {(state.currentRound === state.totalRounds) && (
-                                        <div className="bg-yellow-400 text-black text-[10px] font-black uppercase px-2 py-1 rounded-lg border-2 border-white shadow-sm animate-pulse">
+                                        <div className="bg-yellow-400 text-black text-[10px] md:text-xl font-black uppercase px-2 py-1 rounded-lg border-2 border-white shadow-sm animate-pulse">
                                             {getText(state.language, 'GAME_TRIPLE_POINTS')}
                                         </div>
                                     )}
                                     {(state.currentRound === state.totalRounds - 1) && (
-                                        <div className="bg-yellow-400 text-black text-[10px] font-black uppercase px-2 py-1 rounded-lg border-2 border-white shadow-sm animate-pulse">
+                                        <div className="bg-yellow-400 text-black text-[10px] md:text-xl font-black uppercase px-2 py-1 rounded-lg border-2 border-white shadow-sm animate-pulse">
                                             {getText(state.language, 'GAME_DOUBLE_POINTS')}
                                         </div>
                                     )}
@@ -614,7 +614,7 @@ export const OnlinePlayerView: React.FC<OnlinePlayerViewProps> = ({
 
                             {/* Fact Card */}
                             <div className="w-full bg-white text-purple-900 p-4 md:p-6 rounded-2xl md:rounded-3xl shadow-xl border-b-4 md:border-b-8 border-purple-300 relative z-10 min-h-[13vh] flex items-center justify-center">
-                                <p className={`font-black leading-tight uppercase text-center break-words ${getAdaptiveTextClass(state.currentQuestion?.fact.replace('<BLANK>', '________') || '', 'text-base md:text-2xl', 80)}`}>
+                                <p className={`font-black leading-tight uppercase text-center break-words text-base md:text-2xl ${getAdaptiveTextClass(state.currentQuestion?.fact.replace('<BLANK>', '________') || '', 'text-base md:text-2xl', 80)}`}>
                                     {state.currentQuestion?.fact.replace('<BLANK>', '________')}
                                 </p>
                             </div>
