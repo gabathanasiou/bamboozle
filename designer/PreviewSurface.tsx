@@ -24,6 +24,13 @@ import type {
 import type { ParentToPreviewMessage, PreviewToParentMessage } from './bridge';
 
 const ROOT_ID = 'designer-preview-root';
+type StylePatch = Partial<Record<
+    'width' | 'height' | 'minWidth' | 'minHeight' | 'maxWidth' | 'maxHeight' | 'flex' | 'boxSizing' | 'fontSize' | 'lineHeight',
+    string
+>>;
+const MANAGED_STYLE_KEYS: Array<keyof StylePatch> = [
+    'width', 'height', 'minWidth', 'minHeight', 'maxWidth', 'maxHeight', 'flex', 'boxSizing', 'fontSize', 'lineHeight',
+];
 const noop = () => undefined;
 const actions = createPreviewActions();
 
@@ -66,6 +73,10 @@ export const PreviewSurface: React.FC = () => {
     const originalStylesRef = useRef<Map<string, Record<string, string>>>(new Map());
     const resizeChangesRef = useRef<Map<string, ResizeChange>>(new Map());
     const resizeBaselinesRef = useRef<Map<string, ElementSnapshot>>(new Map());
+    const editStateRef = useRef<Map<string, StylePatch>>(new Map());
+    const editHistoryRef = useRef<Array<Map<string, StylePatch>>>([new Map()]);
+    const editHistoryIndexRef = useRef(0);
+    const editHistoryTimerRef = useRef<number | null>(null);
 
     useEffect(() => {
         configRef.current = config;
@@ -105,49 +116,146 @@ export const PreviewSurface: React.FC = () => {
         post({ type: 'designer:resize-changes', changes: Array.from(resizeChangesRef.current.values()) });
     }, [post]);
 
-    const recordResize = useCallback((selector: string, element: HTMLElement, before: ElementSnapshot) => {
-        const info = describeElement(element);
-        const after = snapshotElement(element);
-        if (
-            before.width === after.width
-            && before.height === after.height
-            && before.fontSize === after.fontSize
-            && before.lineHeight === after.lineHeight
-        ) {
-            return;
-        }
-        // React may remount an inner component and produce a new CSS path. Merge
-        // the change into one entry for the same logical element (text/classes).
-        let baseline = before;
-        const previous = Array.from(resizeChangesRef.current.entries()).find(([key, change]) =>
-            key !== info.selector && change.text === info.text && change.classes === info.classes);
-        if (previous) {
-            const [oldSelector, oldChange] = previous;
-            baseline = oldChange.before;
-            resizeChangesRef.current.delete(oldSelector);
-            resizeBaselinesRef.current.delete(oldSelector);
-            const original = originalStylesRef.current.get(oldSelector);
+    const postEditHistory = useCallback(() => {
+        post({
+            type: 'designer:edit-history',
+            canUndo: editHistoryIndexRef.current > 0,
+            canRedo: editHistoryIndexRef.current < editHistoryRef.current.length - 1,
+        });
+    }, [post]);
+
+    const cloneEditState = (state: Map<string, StylePatch>) => new Map(
+        Array.from(state.entries()).map(([selector, patch]) => [selector, { ...patch }]),
+    );
+
+    const serializeEditState = (state: Map<string, StylePatch>) => JSON.stringify(
+        Array.from(state.entries()).sort(([a], [b]) => a.localeCompare(b)),
+    );
+
+    const refreshResizeChanges = useCallback(() => {
+        const next = new Map<string, ResizeChange>();
+        editStateRef.current.forEach((_patch, selector) => {
+            const before = resizeBaselinesRef.current.get(selector);
+            const element = document.querySelector<HTMLElement>(selector);
+            if (!before || !element) return;
+            const after = snapshotElement(element);
+            if (
+                before.width === after.width
+                && before.height === after.height
+                && before.fontSize === after.fontSize
+                && before.lineHeight === after.lineHeight
+            ) {
+                return;
+            }
+            const info = describeElement(element);
+            next.set(selector, {
+                selector,
+                label: info.text || info.tag,
+                classes: info.classes,
+                text: info.text,
+                before,
+                after,
+                viewport: {
+                    width: window.innerWidth,
+                    height: window.innerHeight,
+                    breakpoint: breakpointForWidth(window.innerWidth),
+                },
+            });
+        });
+        resizeChangesRef.current = next;
+        post({ type: 'designer:resize-changes', changes: Array.from(next.values()) });
+    }, [post, snapshotElement]);
+
+    const applyEditState = useCallback((state: Map<string, StylePatch>) => {
+        const selectors = new Set([...editStateRef.current.keys(), ...state.keys()]);
+        selectors.forEach((selector) => {
+            const element = document.querySelector<HTMLElement>(selector);
+            if (!element) return;
+            const original = originalStylesRef.current.get(selector);
             if (original) {
-                originalStylesRef.current.delete(oldSelector);
-                originalStylesRef.current.set(info.selector, original);
+                Object.entries(original).forEach(([key, value]) => {
+                    (element.style as unknown as Record<string, string>)[key] = value;
+                });
+            } else {
+                MANAGED_STYLE_KEYS.forEach((key) => {
+                    (element.style as unknown as Record<string, string>)[key] = '';
+                });
+            }
+            const patch = state.get(selector);
+            if (patch) {
+                Object.entries(patch).forEach(([key, value]) => {
+                    (element.style as unknown as Record<string, string>)[key] = value;
+                });
+            }
+        });
+        editStateRef.current = cloneEditState(state);
+    }, []);
+
+    const commitEditHistory = useCallback(() => {
+        if (editHistoryTimerRef.current) {
+            window.clearTimeout(editHistoryTimerRef.current);
+            editHistoryTimerRef.current = null;
+        }
+        const current = cloneEditState(editStateRef.current);
+        const last = editHistoryRef.current[editHistoryIndexRef.current];
+        if (last && serializeEditState(last) === serializeEditState(current)) return;
+        const next = editHistoryRef.current.slice(0, editHistoryIndexRef.current + 1);
+        next.push(current);
+        if (next.length > 100) next.shift();
+        editHistoryRef.current = next;
+        editHistoryIndexRef.current = next.length - 1;
+        postEditHistory();
+    }, [postEditHistory]);
+
+    const scheduleEditHistory = useCallback(() => {
+        if (editHistoryTimerRef.current) window.clearTimeout(editHistoryTimerRef.current);
+        editHistoryTimerRef.current = window.setTimeout(() => {
+            editHistoryTimerRef.current = null;
+            commitEditHistory();
+        }, 350);
+    }, [commitEditHistory]);
+
+    const undoEdit = useCallback(() => {
+        commitEditHistory();
+        const index = editHistoryIndexRef.current;
+        if (index <= 0) return;
+        const nextIndex = index - 1;
+        const snapshot = editHistoryRef.current[nextIndex];
+        editHistoryIndexRef.current = nextIndex;
+        applyEditState(snapshot);
+        refreshResizeChanges();
+        postEditHistory();
+        const selector = selected?.selector;
+        if (selector) {
+            const element = document.querySelector<HTMLElement>(selector);
+            if (element) {
+                const info = describeElement(element);
+                setSelected(info);
+                post({ type: 'designer:element', element: info });
             }
         }
-        resizeBaselinesRef.current.set(info.selector, baseline);
-        resizeChangesRef.current.set(info.selector, {
-            selector: info.selector,
-            label: info.text || info.tag,
-            classes: info.classes,
-            text: info.text,
-            before: baseline,
-            after,
-            viewport: {
-                width: window.innerWidth,
-                height: window.innerHeight,
-                breakpoint: breakpointForWidth(window.innerWidth),
-            },
-        });
-        postResizeChanges();
-    }, [postResizeChanges, snapshotElement]);
+    }, [applyEditState, commitEditHistory, post, postEditHistory, refreshResizeChanges, selected?.selector]);
+
+    const redoEdit = useCallback(() => {
+        commitEditHistory();
+        const index = editHistoryIndexRef.current;
+        if (index >= editHistoryRef.current.length - 1) return;
+        const nextIndex = index + 1;
+        const snapshot = editHistoryRef.current[nextIndex];
+        editHistoryIndexRef.current = nextIndex;
+        applyEditState(snapshot);
+        refreshResizeChanges();
+        postEditHistory();
+        const selector = selected?.selector;
+        if (selector) {
+            const element = document.querySelector<HTMLElement>(selector);
+            if (element) {
+                const info = describeElement(element);
+                setSelected(info);
+                post({ type: 'designer:element', element: info });
+            }
+        }
+    }, [applyEditState, commitEditHistory, post, postEditHistory, refreshResizeChanges, selected?.selector]);
 
     const resetSelectedSize = useCallback(() => {
         const selector = selected?.selector;
@@ -159,7 +267,6 @@ export const PreviewSurface: React.FC = () => {
             Object.entries(original).forEach(([key, value]) => {
                 (element.style as unknown as Record<string, string>)[key] = value;
             });
-            originalStylesRef.current.delete(selector);
         } else {
             element.style.width = '';
             element.style.height = '';
@@ -172,26 +279,18 @@ export const PreviewSurface: React.FC = () => {
             element.style.fontSize = '';
             element.style.lineHeight = '';
         }
-        resizeBaselinesRef.current.delete(selector);
-        resizeChangesRef.current.delete(selector);
-        postResizeChanges();
+        editStateRef.current.delete(selector);
+        refreshResizeChanges();
+        commitEditHistory();
         const info = describeElement(element);
         setSelected(info);
         post({ type: 'designer:element', element: info });
-    }, [post, postResizeChanges, selected?.selector]);
+    }, [commitEditHistory, post, refreshResizeChanges, selected?.selector]);
 
     const resetAllSizes = useCallback(() => {
-        originalStylesRef.current.forEach((original, selector) => {
-            const element = document.querySelector<HTMLElement>(selector);
-            if (!element) return;
-            Object.entries(original).forEach(([key, value]) => {
-                (element.style as unknown as Record<string, string>)[key] = value;
-            });
-        });
-        originalStylesRef.current.clear();
-        resizeBaselinesRef.current.clear();
-        resizeChangesRef.current.clear();
-        postResizeChanges();
+        applyEditState(new Map());
+        refreshResizeChanges();
+        commitEditHistory();
         const selector = selected?.selector;
         if (selector) {
             const element = document.querySelector<HTMLElement>(selector);
@@ -201,7 +300,7 @@ export const PreviewSurface: React.FC = () => {
                 post({ type: 'designer:element', element: info });
             }
         }
-    }, [post, postResizeChanges, selected?.selector]);
+    }, [applyEditState, commitEditHistory, post, refreshResizeChanges, selected?.selector]);
 
     const setSelectedStyle = useCallback((property: 'fontSize' | 'lineHeight', value: string) => {
         const selector = selected?.selector;
@@ -228,11 +327,15 @@ export const PreviewSurface: React.FC = () => {
         else element.style.lineHeight = value;
         const rect = element.getBoundingClientRect();
         setSelectionRect({ x: rect.x, y: rect.y, width: rect.width, height: rect.height });
-        recordResize(selector, element, before);
+        const patch = editStateRef.current.get(selector) ?? {};
+        patch[property] = value;
+        editStateRef.current.set(selector, patch);
+        refreshResizeChanges();
+        scheduleEditHistory();
         const info = describeElement(element);
         setSelected(info);
         post({ type: 'designer:element', element: info });
-    }, [post, recordResize, selected?.selector, snapshotElement]);
+    }, [post, refreshResizeChanges, scheduleEditHistory, selected?.selector, snapshotElement]);
 
     const exportPng = useCallback(async () => {
         const root = document.getElementById(ROOT_ID);
@@ -284,6 +387,10 @@ export const PreviewSurface: React.FC = () => {
                 case 'designer:set-selected-style':
                     setSelectedStyle(message.property, message.value);
                     break;
+                case 'designer:history-action':
+                    if (message.action === 'undo') undoEdit();
+                    else redoEdit();
+                    break;
                 case 'designer:reveal-element':
                     revealElement(message.selector);
                     break;
@@ -293,11 +400,12 @@ export const PreviewSurface: React.FC = () => {
         };
         window.addEventListener('message', handleMessage);
         return () => window.removeEventListener('message', handleMessage);
-    }, [exportPng, post, resetAllSizes, resetSelectedSize, scan, setSelectedStyle]);
+    }, [exportPng, post, redoEdit, resetAllSizes, resetSelectedSize, scan, setSelectedStyle, undoEdit]);
 
     useEffect(() => {
         post({ type: 'designer:ready' });
-    }, [post]);
+        postEditHistory();
+    }, [post, postEditHistory]);
 
     useEffect(() => {
         sfx.setMuted(config.preview.muted);
@@ -324,9 +432,17 @@ export const PreviewSurface: React.FC = () => {
         originalStylesRef.current.clear();
         resizeBaselinesRef.current.clear();
         resizeChangesRef.current.clear();
+        editStateRef.current.clear();
+        editHistoryRef.current = [new Map()];
+        editHistoryIndexRef.current = 0;
+        if (editHistoryTimerRef.current) {
+            window.clearTimeout(editHistoryTimerRef.current);
+            editHistoryTimerRef.current = null;
+        }
         post({ type: 'designer:element', element: null });
         post({ type: 'designer:resize-changes', changes: [] });
-    }, [config.screen, config.preview.replayKey, post]);
+        postEditHistory();
+    }, [config.screen, config.preview.replayKey, post, postEditHistory]);
 
     useEffect(() => {
         if (!config.preview.resizeSelection || !selected?.selector) {
@@ -354,6 +470,15 @@ export const PreviewSurface: React.FC = () => {
         update();
         return () => window.cancelAnimationFrame(frame);
     }, [config.preview.resizeSelection, selected?.selector]);
+
+    useEffect(() => {
+        if (!editStateRef.current.size) return;
+        const frame = window.requestAnimationFrame(() => {
+            applyEditState(editStateRef.current);
+            refreshResizeChanges();
+        });
+        return () => window.cancelAnimationFrame(frame);
+    }, [applyEditState, config, refreshResizeChanges]);
 
     useEffect(() => {
         if (!config.preview.inspect) {
@@ -443,25 +568,37 @@ export const PreviewSurface: React.FC = () => {
         const parentDisplay = element.parentElement
             ? window.getComputedStyle(element.parentElement).display
             : '';
-        element.style.boxSizing = 'border-box';
-        element.style.maxWidth = 'none';
-        element.style.maxHeight = 'none';
-        element.style.width = `${Math.round(startWidth)}px`;
-        element.style.height = `${Math.round(startHeight)}px`;
-        if (parentDisplay.includes('flex')) element.style.flex = '0 0 auto';
+        let moved = false;
 
         const previousCursor = document.body.style.cursor;
         const previousSelect = document.body.style.userSelect;
         document.body.style.cursor = 'nwse-resize';
         document.body.style.userSelect = 'none';
 
-        const move = (moveEvent: PointerEvent) => {
-            const width = Math.max(24, startWidth + moveEvent.clientX - startX);
-            const height = Math.max(24, startHeight + moveEvent.clientY - startY);
+        const updateBox = (width: number, height: number) => {
+            element.style.boxSizing = 'border-box';
+            element.style.maxWidth = 'none';
+            element.style.maxHeight = 'none';
             element.style.width = `${Math.round(width)}px`;
             element.style.height = `${Math.round(height)}px`;
+            if (parentDisplay.includes('flex')) element.style.flex = '0 0 auto';
+            const patch = editStateRef.current.get(selector) ?? {};
+            patch.width = element.style.width;
+            patch.height = element.style.height;
+            patch.boxSizing = 'border-box';
+            patch.maxWidth = 'none';
+            patch.maxHeight = 'none';
+            if (parentDisplay.includes('flex')) patch.flex = '0 0 auto';
+            editStateRef.current.set(selector, patch);
             const next = element.getBoundingClientRect();
             setSelectionRect({ x: next.x, y: next.y, width: next.width, height: next.height });
+        };
+
+        const move = (moveEvent: PointerEvent) => {
+            moved = true;
+            const width = Math.max(24, startWidth + moveEvent.clientX - startX);
+            const height = Math.max(24, startHeight + moveEvent.clientY - startY);
+            updateBox(width, height);
         };
         const stop = () => {
             window.removeEventListener('pointermove', move);
@@ -469,7 +606,10 @@ export const PreviewSurface: React.FC = () => {
             window.removeEventListener('pointercancel', stop);
             document.body.style.cursor = previousCursor;
             document.body.style.userSelect = previousSelect;
-            recordResize(selector, element, before);
+            if (moved) {
+                refreshResizeChanges();
+                commitEditHistory();
+            }
             const info = describeElement(element);
             setSelected(info);
             post({ type: 'designer:element', element: info });
@@ -648,7 +788,9 @@ export const PreviewSurface: React.FC = () => {
             ) : (
                 <PreviewErrorBoundary key={`${config.screen}-${config.preview.replayKey}`} onError={reportError}>
                     <MotionConfig reducedMotion={reducedMotion}>
-                        {previewContent}
+                        <div data-designer-app="true" className="h-full w-full">
+                            {previewContent}
+                        </div>
                     </MotionConfig>
                 </PreviewErrorBoundary>
             )}

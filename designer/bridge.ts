@@ -303,6 +303,7 @@ export type ParentToPreviewMessage =
     | { type: 'designer:reset-element-size' }
     | { type: 'designer:reset-all-element-sizes' }
     | { type: 'designer:set-selected-style'; property: 'fontSize' | 'lineHeight'; value: string }
+    | { type: 'designer:history-action'; action: 'undo' | 'redo' }
     | { type: 'designer:reveal-element'; selector: string };
 
 export type PreviewToParentMessage =
@@ -311,7 +312,8 @@ export type PreviewToParentMessage =
     | { type: 'designer:element'; element: DesignerElementInfo | null }
     | { type: 'designer:error'; message: string }
     | { type: 'designer:export-status'; status: 'started' | 'done' | 'error'; message?: string }
-    | { type: 'designer:resize-changes'; changes: ResizeChange[] };
+    | { type: 'designer:resize-changes'; changes: ResizeChange[] }
+    | { type: 'designer:edit-history'; canUndo: boolean; canRedo: boolean };
 
 export interface DesignerBridge {
     getConfig(): DesignerConfig;
@@ -322,8 +324,9 @@ export interface DesignerBridge {
     scan(): void;
     getDiagnostics(): DesignerDiagnostics | null;
     getElement(): DesignerElementInfo | null;
-    undo(): DesignerConfig | null;
-    redo(): DesignerConfig | null;
+    undo(): void;
+    redo(): void;
+    getEditHistory(): { canUndo: boolean; canRedo: boolean };
     getResize(): ResizeChange | null;
     getResizeChanges(): ResizeChange[];
     getAgentBrief(): string;

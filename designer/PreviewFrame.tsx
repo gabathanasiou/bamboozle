@@ -12,11 +12,13 @@ interface PreviewFrameProps {
     onError: (message: string) => void;
     onExportStatus: (status: 'started' | 'done' | 'error', message?: string) => void;
     onResizeChanges: (changes: ResizeChange[]) => void;
+    onEditHistory: (history: { canUndo: boolean; canRedo: boolean }) => void;
     scanNonce: number;
     exportNonce: number;
     resetElementNonce: number;
     resetAllNonce: number;
     styleRequest: { property: 'fontSize' | 'lineHeight'; value: string; nonce: number } | null;
+    historyAction: { action: 'undo' | 'redo'; nonce: number } | null;
     revealRequest: { selector: string; nonce: number } | null;
     onToggleInspect: () => void;
     onScan: () => void;
@@ -32,11 +34,13 @@ export const PreviewFrame: React.FC<PreviewFrameProps> = ({
     onError,
     onExportStatus,
     onResizeChanges,
+    onEditHistory,
     scanNonce,
     exportNonce,
     resetElementNonce,
     resetAllNonce,
     styleRequest,
+    historyAction,
     revealRequest,
     onToggleInspect,
     onScan,
@@ -88,13 +92,16 @@ export const PreviewFrame: React.FC<PreviewFrameProps> = ({
                 case 'designer:resize-changes':
                     onResizeChanges(message.changes);
                     break;
+                case 'designer:edit-history':
+                    onEditHistory({ canUndo: message.canUndo, canRedo: message.canRedo });
+                    break;
                 default:
                     break;
             }
         };
         window.addEventListener('message', handleMessage);
         return () => window.removeEventListener('message', handleMessage);
-    }, [onDiagnostics, onElement, onError, onExportStatus, onResizeChanges]);
+    }, [onDiagnostics, onElement, onError, onExportStatus, onResizeChanges, onEditHistory]);
 
     useEffect(() => {
         if (!ready) return;
@@ -125,6 +132,11 @@ export const PreviewFrame: React.FC<PreviewFrameProps> = ({
         if (!ready || !styleRequest) return;
         post({ type: 'designer:set-selected-style', property: styleRequest.property, value: styleRequest.value });
     }, [ready, styleRequest]);
+
+    useEffect(() => {
+        if (!ready || !historyAction) return;
+        post({ type: 'designer:history-action', action: historyAction.action });
+    }, [ready, historyAction]);
 
     useEffect(() => {
         if (!ready || !revealRequest) return;

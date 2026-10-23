@@ -63,12 +63,8 @@ export const DesignerView: React.FC = () => {
     const selectedRef = useRef(selectedElement);
     const resizeChangesRef = useRef(resizeChanges);
     const statusTimer = useRef<number | null>(null);
-    const historyRef = useRef<DesignerConfig[]>([config]);
-    const historyIndexRef = useRef(0);
-    const historyTimerRef = useRef<number | null>(null);
-    const historySuppressRef = useRef(false);
-    const [historyIndex, setHistoryIndex] = useState(0);
-    const [historyLength, setHistoryLength] = useState(1);
+    const [editHistory, setEditHistory] = useState({ canUndo: false, canRedo: false });
+    const [historyAction, setHistoryAction] = useState<{ action: 'undo' | 'redo'; nonce: number } | null>(null);
 
     useEffect(() => {
         configRef.current = config;
@@ -88,33 +84,8 @@ export const DesignerView: React.FC = () => {
     }, [resizeChanges]);
 
     useEffect(() => {
-        if (historySuppressRef.current) {
-            historySuppressRef.current = false;
-            return;
-        }
-        if (historyTimerRef.current) window.clearTimeout(historyTimerRef.current);
-        historyTimerRef.current = window.setTimeout(() => {
-            const current = configRef.current;
-            const last = historyRef.current[historyIndexRef.current];
-            if (last && JSON.stringify(last) === JSON.stringify(current)) return;
-            const next = historyRef.current.slice(0, historyIndexRef.current + 1);
-            next.push(current);
-            if (next.length > 100) next.shift();
-            historyRef.current = next;
-            const nextIndex = next.length - 1;
-            historyIndexRef.current = nextIndex;
-            setHistoryIndex(nextIndex);
-            setHistoryLength(next.length);
-        }, 350);
-        return () => {
-            if (historyTimerRef.current) window.clearTimeout(historyTimerRef.current);
-        };
-    }, [config]);
-
-    useEffect(() => {
         return () => {
             if (statusTimer.current) window.clearTimeout(statusTimer.current);
-            if (historyTimerRef.current) window.clearTimeout(historyTimerRef.current);
         };
     }, []);
 
@@ -272,50 +243,9 @@ export const DesignerView: React.FC = () => {
         }
     }, [flashStatus]);
 
-    const flushPendingHistory = useCallback(() => {
-        if (historyTimerRef.current) {
-            window.clearTimeout(historyTimerRef.current);
-            historyTimerRef.current = null;
-        }
-        const last = historyRef.current[historyIndexRef.current];
-        const current = configRef.current;
-        if (!last || JSON.stringify(last) === JSON.stringify(current)) return;
-        const next = historyRef.current.slice(0, historyIndexRef.current + 1);
-        next.push(current);
-        if (next.length > 100) next.shift();
-        historyRef.current = next;
-        historyIndexRef.current = next.length - 1;
-        setHistoryIndex(next.length - 1);
-        setHistoryLength(next.length);
+    const requestHistory = useCallback((action: 'undo' | 'redo') => {
+        setHistoryAction((current) => ({ action, nonce: (current?.nonce ?? 0) + 1 }));
     }, []);
-
-    const undo = useCallback((): DesignerConfig | null => {
-        flushPendingHistory();
-        const index = historyIndexRef.current;
-        if (index <= 0) return null;
-        const nextIndex = index - 1;
-        const next = historyRef.current[nextIndex];
-        historySuppressRef.current = true;
-        historyIndexRef.current = nextIndex;
-        setHistoryIndex(nextIndex);
-        setConfig(next);
-        flashStatus('Undo');
-        return next;
-    }, [flashStatus, flushPendingHistory]);
-
-    const redo = useCallback((): DesignerConfig | null => {
-        flushPendingHistory();
-        const index = historyIndexRef.current;
-        if (index >= historyRef.current.length - 1) return null;
-        const nextIndex = index + 1;
-        const next = historyRef.current[nextIndex];
-        historySuppressRef.current = true;
-        historyIndexRef.current = nextIndex;
-        setHistoryIndex(nextIndex);
-        setConfig(next);
-        flashStatus('Redo');
-        return next;
-    }, [flashStatus, flushPendingHistory]);
 
     useEffect(() => {
         const onKeyDown = (event: KeyboardEvent) => {
@@ -324,16 +254,16 @@ export const DesignerView: React.FC = () => {
             if (target && (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable)) return;
             if (event.key.toLowerCase() === 'z') {
                 event.preventDefault();
-                if (event.shiftKey) redo();
-                else undo();
+                if (event.shiftKey) requestHistory('redo');
+                else requestHistory('undo');
             } else if (event.key.toLowerCase() === 'y') {
                 event.preventDefault();
-                redo();
+                requestHistory('redo');
             }
         };
         window.addEventListener('keydown', onKeyDown);
         return () => window.removeEventListener('keydown', onKeyDown);
-    }, [redo, undo]);
+    }, [requestHistory]);
 
     const revealIssue = useCallback((selector: string) => {
         setRevealRequest({ selector, nonce: Date.now() });
@@ -393,8 +323,9 @@ export const DesignerView: React.FC = () => {
             scan: () => setScanNonce((value) => value + 1),
             getDiagnostics: () => diagnosticsRef.current,
             getElement: () => selectedRef.current,
-            undo: () => undo(),
-            redo: () => redo(),
+            undo: () => requestHistory('undo'),
+            redo: () => requestHistory('redo'),
+            getEditHistory: () => editHistory,
             getResize: () => resizeChangesRef.current.find((change) => change.selector === selectedRef.current?.selector) ?? null,
             getResizeChanges: () => resizeChangesRef.current,
             getAgentBrief: () => getAgentBrief(configRef.current, diagnosticsRef.current, selectedRef.current, resizeChangesRef.current),
@@ -409,7 +340,7 @@ export const DesignerView: React.FC = () => {
         return () => {
             delete window.__bamboozleDesigner;
         };
-    }, [redo, undo]);
+    }, [editHistory, requestHistory]);
 
     const screen = SCREEN_BY_ID[config.screen];
     const viewLabel = config.screen === 'join'
@@ -452,10 +383,10 @@ export const DesignerView: React.FC = () => {
                     <span className={`flex items-center gap-1 rounded-md border px-2 py-1 font-mono text-[9px] ${issueCount ? 'border-red-400/20 bg-red-400/10 text-red-300' : 'border-green-400/20 bg-green-400/10 text-green-300'}`}>
                         <Bug size={11} /> {issueCount ? `${issueCount} issue${issueCount === 1 ? '' : 's'}` : 'no issues'}
                     </span>
-                    <button type="button" onClick={() => undo()} disabled={historyIndex <= 0} className="flex items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[9px] font-bold uppercase tracking-wide text-slate-400 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30" title="Undo (Cmd/Ctrl+Z)">
+                    <button type="button" onClick={() => requestHistory('undo')} disabled={!editHistory.canUndo} className="flex items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[9px] font-bold uppercase tracking-wide text-slate-400 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30" title="Undo design edit (Cmd/Ctrl+Z)">
                         <Undo2 size={12} /> Undo
                     </button>
-                    <button type="button" onClick={() => redo()} disabled={historyIndex >= historyLength - 1} className="flex items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[9px] font-bold uppercase tracking-wide text-slate-400 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30" title="Redo (Cmd/Ctrl+Shift+Z)">
+                    <button type="button" onClick={() => requestHistory('redo')} disabled={!editHistory.canRedo} className="flex items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[9px] font-bold uppercase tracking-wide text-slate-400 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30" title="Redo design edit (Cmd/Ctrl+Shift+Z)">
                         <Redo2 size={12} /> Redo
                     </button>
                     <button type="button" onClick={scan} className="flex items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[9px] font-bold uppercase tracking-wide text-slate-400 hover:bg-white/10" title="Scan layout">
@@ -526,6 +457,8 @@ export const DesignerView: React.FC = () => {
                         onDiagnostics={setDiagnostics}
                         onElement={setSelectedElement}
                         onResizeChanges={setResizeChanges}
+                        onEditHistory={setEditHistory}
+                        historyAction={historyAction}
                         onError={(message) => flashStatus(`Preview error: ${message}`)}
                         onExportStatus={(exportStatus, message) => {
                             if (exportStatus === 'started') flashStatus('Rendering PNG…');

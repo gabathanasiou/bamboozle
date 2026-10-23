@@ -26,6 +26,9 @@ export const cssSelector = (element: HTMLElement): string => {
     const root = document.getElementById(ROOT_ID);
     if (!root) return '';
     if (element === root) return `#${ROOT_ID}`;
+    const appRoot = root.querySelector<HTMLElement>('[data-designer-app]');
+    const base = appRoot && (appRoot === element || appRoot.contains(element)) ? appRoot : root;
+    if (element === base) return appRoot ? '[data-designer-app]' : `#${ROOT_ID}`;
     if (element.id) return `#${escapeId(element.id)}`;
     const testId = element.getAttribute('data-testid');
     if (testId) return `[data-testid="${testId}"]`;
@@ -34,7 +37,7 @@ export const cssSelector = (element: HTMLElement): string => {
 
     const parts: string[] = [];
     let node: HTMLElement | null = element;
-    while (node && node !== root && node.nodeType === Node.ELEMENT_NODE) {
+    while (node && node !== base && node.nodeType === Node.ELEMENT_NODE) {
         let part = node.tagName.toLowerCase();
         const parent: HTMLElement | null = node.parentElement;
         if (parent) {
@@ -44,7 +47,7 @@ export const cssSelector = (element: HTMLElement): string => {
         parts.unshift(part);
         node = parent;
     }
-    return [`#${ROOT_ID}`, ...parts].join(' > ');
+    return [appRoot ? '[data-designer-app]' : `#${ROOT_ID}`, ...parts].join(' > ');
 };
 
 export const describeElement = (element: HTMLElement): DesignerElementInfo => {
