@@ -58,6 +58,9 @@ INTRO/REVEAL/LEADER. Host-disconnected and room-closed overlays are player-side.
   preview even when the OS prefers reduced.
 - **Inspect:** overflow/clipped-text scan, outlines, hover inspector, issue markers,
   replay, reduced motion, mute.
+- **Handoff skill:** the copy-paste request format is consumed by the
+  `design-lab-handoff` skill (`~/.config/opencode/skills/`), which triages noise,
+  maps selectors to shared components, and applies the intent as responsive code.
 - **Live element editor:** toggle **Resize selected**, pick an element, then drag
   the yellow handle. The selected-element card also has **Font size** and
   **Line height** inputs. **Apply to similar** is on by default: changes are

@@ -649,6 +649,10 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                         <LabButton onClick={onCopyResizeRequest} variant="primary" fullWidth>
                             <Copy size={12} /> Copy resize request
                         </LabButton>
+                        <div className="text-[9px] leading-relaxed text-slate-600">
+                            Paste the request to an agent; the design-lab-handoff skill turns it
+                            into responsive code at the breakpoint shown above.
+                        </div>
                     </div>
                 )}
             </LabSection>

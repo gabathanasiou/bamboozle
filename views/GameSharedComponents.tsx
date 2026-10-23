@@ -576,12 +576,12 @@ export const LeaderboardSequence = ({ state, actions, onHome, isHost }: { state:
                                     initial={{ opacity: 0, y: 50 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     transition={{ type: 'spring', stiffness: 45, damping: 12 }}
-                                    className="bg-white text-black p-4 rounded-2xl flex items-center shadow-2xl relative overflow-hidden border-b-8 border-gray-200"
+                                    className="bg-white text-black p-2 md:p-4 rounded-xl md:rounded-2xl flex items-center shadow-2xl relative overflow-hidden border-b-4 md:border-b-8 border-gray-200"
                                 >
-                                    <div className="w-8 md:w-16 text-2xl md:text-4xl font-black text-gray-300 italic">
+                                    <div className="w-9 shrink-0 md:w-16 text-xl md:text-4xl font-black text-gray-300 italic">
                                         #{idx + 1}
                                     </div>
-                                    <Avatar seed={p.avatarSeed} size={72} expression={getRankEmotion(p, idx)} className="mr-2 md:mr-6 filter drop-shadow scale-75 md:scale-100" />
+                                    <Avatar seed={p.avatarSeed} size={72} expression={getRankEmotion(p, idx)} className="mr-2 md:mr-6 filter drop-shadow !w-[52px] !h-[52px] md:!w-[72px] md:!h-[72px]" />
                                     <div className="flex-1 uppercase">
                                         <h3 className="text-lg md:text-3xl font-bold">{p.name}</h3>
                                         {showNewScores && p.lastRoundScore > 0 && (
