@@ -48,6 +48,7 @@ const joinNames = (names: string[], language: Language): string => {
 
 const STORAGE_KEY = 'bamboozle_used_questions';
 const HOST_SECRET_KEY = 'bamboozle_host_secret';
+const PENDING_CREATE_KEY = 'bamboozle_create_key';
 const PLAYER_SECRET_PREFIX = 'bamboozle_player_secret_';
 const MAX_PLAYERS = 6;
 // SOCKET_URL moved inside hook to be dynamic
@@ -82,6 +83,33 @@ const storeHostSecret = (secret: string): void => {
 const forgetHostSecret = (): void => {
   try {
     localStorage.removeItem(HOST_SECRET_KEY);
+  } catch {
+    // Ignore.
+  }
+};
+
+const newCreateKey = (): string => {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+};
+const getPendingCreateKey = (): string => {
+  try {
+    return localStorage.getItem(PENDING_CREATE_KEY) || '';
+  } catch {
+    return '';
+  }
+};
+const storePendingCreateKey = (key: string): void => {
+  try {
+    localStorage.setItem(PENDING_CREATE_KEY, key);
+  } catch {
+    // Ignore.
+  }
+};
+const clearPendingCreateKey = (): void => {
+  try {
+    localStorage.removeItem(PENDING_CREATE_KEY);
   } catch {
     // Ignore.
   }
@@ -750,30 +778,43 @@ export const useGameService = (
 
     const createHostRoom = () => {
       import.meta.env.DEV && console.log('[GameService] Creating room for host:', playerId);
-      client.emit('createRoom', { hostId: playerId, hostSecret: getHostSecret() }, (result: any) => {
-        const roomCode = typeof result === 'string' ? result : result?.roomCode;
-        const hostSecret = typeof result === 'object' && result ? result.hostSecret : '';
-        if (typeof roomCode !== 'string' || !roomCode) {
-          if (result?.error === 'HOST_SECRET_REQUIRED') {
-            // This device cannot prove ownership of the old host id. Start a
-            // fresh identity so hosting is not locked out by the stale rooms.
-            localStorage.removeItem('bamboozle_player_id');
-            localStorage.removeItem('bamboozle_room_code');
-            forgetHostSecret();
-            window.location.reload();
+      // Reuse the pending key across retries and reloads: if the create ack is
+      // lost, the retry gets the same room and secret instead of stranding it.
+      let createKey = getPendingCreateKey();
+      if (!createKey) {
+        createKey = newCreateKey();
+        storePendingCreateKey(createKey);
+      }
+      client.emit(
+        'createRoom',
+        { hostId: playerId, hostSecret: getHostSecret(), createKey },
+        (result: any) => {
+          const roomCode = typeof result === 'string' ? result : result?.roomCode;
+          const hostSecret = typeof result === 'object' && result ? result.hostSecret : '';
+          if (typeof roomCode !== 'string' || !roomCode) {
+            if (result?.error === 'HOST_SECRET_REQUIRED') {
+              // This device cannot prove ownership of the old host id. Start a
+              // fresh identity so hosting is not locked out by the stale rooms.
+              clearPendingCreateKey();
+              localStorage.removeItem('bamboozle_player_id');
+              localStorage.removeItem('bamboozle_room_code');
+              forgetHostSecret();
+              window.location.reload();
+              return;
+            }
+            console.error('[GameService] Server failed to return a roomCode!', result);
             return;
           }
-          console.error('[GameService] Server failed to return a roomCode!', result);
-          return;
-        }
-        if (typeof hostSecret === 'string' && hostSecret) storeHostSecret(hostSecret);
-        import.meta.env.DEV && console.log('[GameService] Room created successfully:', roomCode);
-        localStorage.setItem('bamboozle_room_code', roomCode);
-        const next = { ...stateRef.current, roomCode };
-        stateRef.current = next;
-        setState(next);
-        client.emit('gameStateUpdate', { roomCode, gameState: next });
-      });
+          clearPendingCreateKey();
+          if (typeof hostSecret === 'string' && hostSecret) storeHostSecret(hostSecret);
+          import.meta.env.DEV && console.log('[GameService] Room created successfully:', roomCode);
+          localStorage.setItem('bamboozle_room_code', roomCode);
+          const next = { ...stateRef.current, roomCode };
+          stateRef.current = next;
+          setState(next);
+          client.emit('gameStateUpdate', { roomCode, gameState: next });
+        },
+      );
     };
 
     const adoptOrCreateHostRoom = () => {
@@ -882,6 +923,21 @@ export const useGameService = (
       localStorage.removeItem('bamboozle_room_code'); // Clear session
       setHostDisconnected(false);
       setRoomClosed(true);
+    });
+
+    // The room refused a fire-and-forget update. Roll the host back to the last
+    // accepted state instead of silently diverging from the players.
+    client.on('roomError', (payload: { error?: string }) => {
+      console.error('[GameService] Room rejected an update:', payload?.error);
+      if (payload?.error !== 'STATE_TOO_LARGE') return;
+      const roomCode = stateRef.current.roomCode;
+      if (!roomCode) return;
+      client.emit('requestState', { roomCode }, (remoteState: GameState | null) => {
+        if (!remoteState) return;
+        const recovered = normalizeState(remoteState);
+        stateRef.current = recovered;
+        setState(recovered);
+      });
     });
 
     // Host disconnected - show overlay while waiting for reconnection

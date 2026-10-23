@@ -31,7 +31,7 @@ Status: phase 1 — native WebSocket transport for the Cloudflare Worker. Event 
 |---|---|---|---|
 | `checkRoom` | `{ roomCode }` | yes | Directory lookup; `{ exists }` |
 | `getRoomsByHost` | `{ hostId, hostSecret }` | yes | Directory rows + fresh room info (`roomCode`, `phase`, `playerCount`, `playerNames`, `isGracePeriod`, `createdAt`); returns `[]` without the matching host secret |
-| `createRoom` | `{ hostId, hostSecret?, token? }` | yes | Returns `{ roomCode, hostSecret }`; a server-issued 128-bit secret is returned once and required for later rooms under the same host id |
+| `createRoom` | `{ hostId, hostSecret?, createKey?, token? }` | yes | Returns `{ roomCode, hostSecret }`; a server-issued 128-bit secret is returned once and required for later rooms. An optional unguessable `createKey` makes the create idempotent: the same `(hostId, createKey)` returns the same room and secret so a lost ack is recoverable |
 | `joinRoom` | `{ roomCode, id, role?, name?, hostSecret?, playerSecret? }` | yes | `{ success, state, becameHost, playerSecret? }`; host reclaim needs `hostSecret`, a returning player needs `playerSecret` |
 | `requestState` | `{ roomCode }` | yes | Latest persisted `GameState \| null`; only for the room the socket joined |
 | `gameStateUpdate` | `{ roomCode, gameState }` | no | Host-only; strips `hostId`, persists (≤ every 5s) and broadcasts to everyone else |
@@ -47,6 +47,7 @@ Status: phase 1 — native WebSocket transport for the Cloudflare Worker. Event 
 | `hostEvent` | `GameEvent` | Host relay (`PLAY_NARRATION`, …) |
 | `playerEvent` | `GameEvent` | Player/audience action relay |
 | `playAudio` | `{ audioUrl, text, requestId, isHit, hash }` | Host only offline; whole room when `isOnlineMode` |
+| `roomError` | `{ error, roomCode }` | The room rejected the sender's fire-and-forget update (e.g. `STATE_TOO_LARGE`); the host re-syncs from `requestState` |
 | `roomClosed` | — | Host grace expired, empty room, or hard cap |
 | `hostDisconnected` | — | Host socket closed or 3rd-room grace |
 | `hostReconnected` | — | Host reclaimed inside grace |
@@ -59,7 +60,8 @@ Status: phase 1 — native WebSocket transport for the Cloudflare Worker. Event 
 - `hostId` is **never** included in room state (join, broadcast or `requestState`). It is not an auth credential.
 - The host credential is a server-generated 128-bit secret, returned once by `createRoom` and stored on the host device. Only its SHA-256 hash is kept in room meta. `joinRoom` must present it to reclaim host inside grace; knowing `hostId` is not enough.
 - Every player/audience row gets its own server-generated 128-bit resume secret on first join; only its hash is stored. The join ack returns the secret once, the client stores it per room, and every later join of that id must present it. A socket that does not own the current `socket_id` cannot send `playerEvent` or trigger the player's disconnect/kick.
-- `createRoom` requires the same secret before it may create another room for an existing host id, or grace/close any of that host's rooms.
+- `createRoom` requires the same secret before it may create another room for an existing host id, or grace/close any of that host's rooms. An optional client-generated `createKey` (16–64 chars, never broadcast) makes the call idempotent: replaying `(hostId, createKey)` returns the same room code and secret. The first room's secret is derived with HMAC from a Directory-local pepper, so the raw secret is never stored.
+- Rooms without a `host_secret_hash` predate the secret design and can never be reclaimed; the Directory drains them on the next sweep or create instead of blocking the host.
 - Persistence is throttled: a write happens on phase change, when 5s have elapsed, and immediately when host grace starts (so a reconnect never receives a minimal/stale state).
 - Roster/room metadata is read from the room DO. `playerNames` comes from the last persisted state; it can lag up to 5s.
 - `Directory` is a best-effort index: `checkRoom`/`joinRoom` verify against the room DO and delete stale rows.

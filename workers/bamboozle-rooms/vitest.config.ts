@@ -16,6 +16,8 @@ export default defineConfig({
           EMPTY_ROOM_MS: '60000',
           TTS_DAILY_CHARS: '100',
           TTS_IP_DAILY_CHARS: '60',
+          TTS_DAILY_REQUESTS: '3',
+          TTS_IP_DAILY_REQUESTS: '2',
           MAX_PLAYERS_PER_ROOM: '2',
           MAX_AUDIENCE_PER_ROOM: '2',
           MAX_STATE_BYTES: '1000',

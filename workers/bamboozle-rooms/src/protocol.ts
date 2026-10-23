@@ -192,6 +192,18 @@ export function normalizeSecret(value: unknown): string {
   return SECRET_RE.test(secret) ? secret : '';
 }
 
+const CREATE_KEY_RE = /^[A-Za-z0-9_-]{16,64}$/;
+
+/**
+ * Client-generated idempotency key for `createRoom`. It is never broadcast and
+ * acts as a short-lived create credential, so it must be unguessable.
+ */
+export function normalizeCreateKey(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  const key = value.trim();
+  return CREATE_KEY_RE.test(key) ? key : '';
+}
+
 export function randomSecret(): string {
   const bytes = new Uint8Array(SECRET_BYTES);
   crypto.getRandomValues(bytes);

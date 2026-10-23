@@ -345,6 +345,29 @@ async function main() {
     fourthSocket.close();
   });
 
+  await step('createRoom replays a lost ack with the same room and secret', async () => {
+    const idemHost = `smoke-idem-${Date.now()}`;
+    const createKey = `smoke-key-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const firstSocket = await Client.connect();
+    const first = await firstSocket.ack('createRoom', { hostId: idemHost, createKey });
+
+    // A new socket is what a reload after a lost ack looks like.
+    const retrySocket = await Client.connect();
+    const replay = await retrySocket.ack('createRoom', { hostId: idemHost, createKey });
+    assert(replay.roomCode === first.roomCode, 'same room on replay');
+    assert(replay.hostSecret === first.hostSecret, 'same secret on replay');
+
+    firstSocket.close();
+    retrySocket.close();
+  });
+
+  await step('oversized state update notifies the host', async () => {
+    const huge = { roomCode, phase: 'LOBBY', players: {}, blob: 'x'.repeat(200 * 1024) };
+    host.send('gameStateUpdate', { roomCode, gameState: huge });
+    const error = await host.wait('roomError');
+    assert(error?.error === 'STATE_TOO_LARGE', `roomError: ${JSON.stringify(error)}`);
+  });
+
   await step('TTS cache hit (existing GCS object)', async () => {
     host.send('requestNarrator', { roomCode, text: CACHED_TEXT, language: 'en', requestId: 'smoke-cached' });
     const audio = await host.wait('playAudio', 30000);

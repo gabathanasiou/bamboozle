@@ -77,18 +77,21 @@ async function tts(request: Request, env: Env): Promise<Response> {
     return json({ error: 'UNAUTHORIZED' }, 401);
   }
 
+  // Count the request first: cache hits are free from the character budget, so
+  // a leaked token could otherwise spam this route (and oversized bodies must
+  // not be a free rejection path).
+  if (!(await allowTtsRequest(request, env))) {
+    return json({ error: 'TTS_RATE_EXCEEDED' }, 429);
+  }
+
   const length = Number(request.headers.get('content-length') || 0);
   if (length > MAX_TTS_BODY_BYTES) return json({ error: 'BODY_TOO_LARGE' }, 413);
 
-  let body: Record<string, unknown>;
-  try {
-    const parsed = await request.json();
-    body = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : {};
-  } catch {
-    return json({ error: 'INVALID_JSON' }, 400);
+  const read = await readJsonBody(request);
+  if (!read.ok) {
+    return json({ error: read.status === 413 ? 'BODY_TOO_LARGE' : 'INVALID_JSON' }, read.status);
   }
+  const body = read.body;
 
   const text = sanitize(body.text, 500);
   if (!text) return json({ error: 'TEXT_REQUIRED' }, 400);
@@ -119,6 +122,68 @@ async function consumeTtsBudget(request: Request, env: Env, chars: number): Prom
     body: JSON.stringify({ ip, chars }),
   });
   if (!response.ok) throw new Error('TTS_BUDGET_EXCEEDED');
+}
+
+async function allowTtsRequest(request: Request, env: Env): Promise<boolean> {
+  const ip = request.headers.get('cf-connecting-ip') || 'unknown';
+  const id = env.DIRECTORY.idFromName('directory');
+  const stub = env.DIRECTORY.get(id);
+  try {
+    const response = await stub.fetch('https://directory/internal/tts-request', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ip }),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+type JsonRead =
+  | { ok: true; body: Record<string, unknown> }
+  | { ok: false; status: 400 | 413 };
+
+/** Read with a hard byte cap; never trust Content-Length on a chunked body. */
+async function readJsonBody(request: Request): Promise<JsonRead> {
+  if (!request.body) return { ok: false, status: 400 };
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      size += value.byteLength;
+      if (size > MAX_TTS_BODY_BYTES) {
+        await reader.cancel();
+        return { ok: false, status: 413 };
+      }
+      chunks.push(value);
+    }
+  } catch {
+    return { ok: false, status: 400 };
+  }
+
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    const parsed: unknown = JSON.parse(new TextDecoder().decode(bytes));
+    return {
+      ok: true,
+      body:
+        parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+          ? (parsed as Record<string, unknown>)
+          : {},
+    };
+  } catch {
+    return { ok: false, status: 400 };
+  }
 }
 
 function withCors(response: Response, origin: string | null): Response {

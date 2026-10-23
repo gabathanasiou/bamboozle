@@ -41,4 +41,31 @@ describe('/api/tts gate', () => {
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({ error: 'INVALID_JSON' });
   });
+
+  it('rejects an oversized streamed body without a Content-Length', async () => {
+    const encoder = new TextEncoder();
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode('{"text":"'));
+        controller.enqueue(encoder.encode('x'.repeat(20 * 1024)));
+        controller.enqueue(encoder.encode('"}'));
+        controller.close();
+      },
+    });
+    const response = await call(
+      '/api/tts',
+      {
+        method: 'POST',
+        headers: {
+          authorization: 'Bearer test-token-0123456789',
+          'content-type': 'application/json',
+        },
+        body,
+        duplex: 'half',
+      } as RequestInit,
+      { ...env, TTS_API_TOKEN: 'test-token-0123456789' },
+    );
+    expect(response.status).toBe(413);
+    await expect(response.json()).resolves.toMatchObject({ error: 'BODY_TOO_LARGE' });
+  });
 });

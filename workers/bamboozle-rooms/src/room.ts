@@ -534,6 +534,8 @@ export class BambooRoom {
     if (!text) return json({ error: 'TEXT_REQUIRED' }, 400);
 
     try {
+      const limited = await this.directory('/internal/tts-request', { ip: clientIp });
+      if (!limited.ok) throw new Error('TTS_RATE_EXCEEDED');
       const result = await getAudio(this.env, text, language, roomCode, async () => {
         const response = await this.directory('/internal/tts-budget', {
           ip: clientIp,
@@ -553,9 +555,12 @@ export class BambooRoom {
       await this.broadcast('playAudio', payload, isOnlineMode ? {} : { onlySocketId: socketId });
       return json({ ok: true, isHit: result.isHit });
     } catch (error) {
-      if (error instanceof Error && error.message === 'TTS_BUDGET_EXCEEDED') {
-        console.warn(`[Room] TTS budget exceeded room=${roomCode}`);
-        return json({ error: 'TTS_BUDGET_EXCEEDED' }, 429);
+      if (
+        error instanceof Error &&
+        (error.message === 'TTS_BUDGET_EXCEEDED' || error.message === 'TTS_RATE_EXCEEDED')
+      ) {
+        console.warn(`[Room] TTS ${error.message} room=${roomCode}`);
+        return json({ error: error.message }, 429);
       }
       console.error('[Room] narrator failed', error);
       return json({ error: 'TTS_FAILED' }, 500);

@@ -13,9 +13,12 @@ export interface Env {
   TTS_API_TOKEN?: string;
   TTS_DAILY_CHARS?: string;
   TTS_IP_DAILY_CHARS?: string;
+  TTS_DAILY_REQUESTS?: string;
+  TTS_IP_DAILY_REQUESTS?: string;
   MAX_SOCKETS_PER_IP?: string;
   MAX_SOCKETS_TOTAL?: string;
   MAX_UPGRADES_PER_MINUTE?: string;
+  MAX_CREATES_PER_HOUR?: string;
   MAX_TOTAL_ROOMS?: string;
   MAX_PLAYERS_PER_ROOM?: string;
   MAX_AUDIENCE_PER_ROOM?: string;
@@ -28,9 +31,12 @@ export const emptyRoomMs = (env: Env): number => positiveInt(env.EMPTY_ROOM_MS, 
 
 export const ttsDailyChars = (env: Env): number => positiveInt(env.TTS_DAILY_CHARS, 50_000);
 export const ttsIpDailyChars = (env: Env): number => positiveInt(env.TTS_IP_DAILY_CHARS, 5_000);
+export const ttsDailyRequests = (env: Env): number => positiveInt(env.TTS_DAILY_REQUESTS, 5_000);
+export const ttsIpDailyRequests = (env: Env): number => positiveInt(env.TTS_IP_DAILY_REQUESTS, 500);
 export const maxSocketsPerIp = (env: Env): number => positiveInt(env.MAX_SOCKETS_PER_IP, 32);
 export const maxSocketsTotal = (env: Env): number => positiveInt(env.MAX_SOCKETS_TOTAL, 1_000);
 export const maxUpgradesPerMinute = (env: Env): number => positiveInt(env.MAX_UPGRADES_PER_MINUTE, 30);
+export const maxCreatesPerHour = (env: Env): number => positiveInt(env.MAX_CREATES_PER_HOUR, 10);
 export const maxTotalRooms = (env: Env): number => positiveInt(env.MAX_TOTAL_ROOMS, 500);
 export const maxPlayersPerRoom = (env: Env): number => positiveInt(env.MAX_PLAYERS_PER_ROOM, 6);
 export const maxAudiencePerRoom = (env: Env): number => positiveInt(env.MAX_AUDIENCE_PER_ROOM, 20);
