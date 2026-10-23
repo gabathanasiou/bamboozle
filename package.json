@@ -12,6 +12,7 @@
     "roadmap": "node scripts/roadmap.mjs",
     "roadmap:check": "node scripts/roadmap.mjs check",
     "lint": "npm run roadmap:check && npm run lint:docs",
+    "typecheck": "tsc --noEmit",
     "postinstall": "cd server && npm install",
     "lint:docs": "node scripts/check-doc-budget.mjs",
     "lint:tests": "node scripts/check-doc-budget.mjs",

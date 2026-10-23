@@ -1,0 +1,62 @@
+name: CI
+
+# Every change lands through a green PR. `main` is protected and requires this
+# check, so a failing typecheck/test blocks both the merge and the Netlify
+# production build that follows it.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Lint, typecheck, test, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            workers/bamboozle-rooms/package-lock.json
+
+      - name: Install app dependencies
+        run: npm ci
+
+      - name: Lint (roadmap + docs budget)
+        run: npm run lint
+
+      - name: Typecheck app
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm run test:unit
+
+      - name: Worker typecheck and tests
+        run: |
+          npm --prefix workers/bamboozle-rooms ci
+          npm --prefix workers/bamboozle-rooms run typecheck
+          npm --prefix workers/bamboozle-rooms run test
+
+      - name: Build app
+        run: npm run build
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: End-to-end tests
+        run: npm run test:e2e
+        env:
+          CI: 'true'

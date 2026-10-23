@@ -75,6 +75,19 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))" \
 - `MAX_SOCKETS_PER_IP`, `MAX_SOCKETS_TOTAL`, `MAX_TOTAL_ROOMS`,
   `MAX_PLAYERS_PER_ROOM`, `MAX_AUDIENCE_PER_ROOM`, `MAX_STATE_BYTES` (abuse caps)
 
+## CI gate
+
+`.github/workflows/ci.yml` runs on every PR and on pushes to `main`: app lint
+(roadmap + doc budget), `tsc --noEmit`, unit tests, worker typecheck/tests, the
+production build, then Playwright. `main` is branch-protected: the
+`Lint, typecheck, test, build` check and a PR are required, so a red check blocks
+both the merge and the Netlify production build that follows it. Do not add a
+direct-push bypass for routine work; use a PR.
+
+The root `tsconfig.json` excludes `workers/**` (the Worker has its own tsconfig)
+and the unused `data/_oldquestions.ts` backup; the live question banks are
+`i18n/questions/{en,el}.ts`.
+
 ## Netlify
 
 Production, branch deploys, deploy previews and local builds all use the Worker URL:

@@ -19,7 +19,7 @@
 | # | Finding | Severity | Priority | Blocks |
 |---|---|---|---|---|
 | F-01 | A second socket can claim an existing player id and act/kick as that player — **fixed in `405c808`** | High | P0 | first paying customer |
-| F-02 | `getRoomsByHost` is unauthenticated; host ids can be discovered and squatted | Medium | P2 | scale / privacy |
+| F-02 | `getRoomsByHost` is unauthenticated; host ids can be discovered and squatted — **discovery closed by item 38** | Medium | P2 | scale / privacy |
 | F-03 | Global socket/room caps are saturable; create rate is in-memory | Medium | P2 | scale |
 | F-04 | A lost `createRoom` ack strands the host secret and wipes the identity | Low | P3 | hardening |
 | F-05 | Pre-deploy rooms have no host-secret hash and cannot be reclaimed | Low | P3 | rollout |
@@ -30,9 +30,9 @@
 materially improves cost control: `/api/tts` is off by default, both TTS paths
 share a daily/per-IP character budget, and room/socket/create/player/state caps
 plus a sweep alarm are in place. F-01 was fixed after the review (`405c808`), so
-the player path is now bound to a per-player resume secret and socket. The
-remaining exposure is F-02/F-03 and the external GCP budget/alert; F-02 should be
-fixed before growth makes host enumeration useful.
+the player path is now bound to a per-player resume secret and socket. F-02's
+room-discovery disclosure is closed by item 38 (host secret required); what
+remains is F-03 (global caps) and the external GCP budget/alert.
 
 ## 2. Scope & method
 
@@ -128,7 +128,7 @@ before the victim's first join in a new room; the victim then gets
 ids (or a device-bound identity) would remove this; it is a DoS/identity loss, not
 impersonation.
 
-### F-02 — Unauthenticated `getRoomsByHost` and host-id squatting · Medium · P2 · verified
+### F-02 — Unauthenticated `getRoomsByHost` and host-id squatting · Medium · P2 · fixed
 
 - **Where:** `workers/bamboozle-rooms/src/directory.ts:274-278,581-599,492-520`,
   `workers/bamboozle-rooms/src/room.ts:606-610`,
@@ -157,6 +157,14 @@ impersonation.
   "host joins own room" path (blocked by the host secret); lead re-read
   `directory.ts:274-278,581-599` and `gameService.ts:199-205,564-575`.
   Confidence 8.
+
+**Remediation (item 38):** `getRoomsByHost` now requires `hostSecret`; the
+Directory hashes it and compares against the indexed rows for that host id,
+returning `[]` when absent or wrong. The client sends the stored host secret on
+discovery/adopt. This closes the disclosure path; the host-id squat remains
+partially open until host ids are server-issued (phase-2 entitlement token),
+because a squatter who guesses an unused id can still create first. Tests:
+directory unit + 15-step smoke cover missing/wrong secret.
 
 ### F-03 — Global caps are saturable and the create limiter is in-memory · Medium · P2 · verified
 
@@ -272,7 +280,7 @@ are not open findings:
 | AUTH-05 | ⬜ | — | No user session layer; room secrets are per-room |
 | AUTH-09 | 🟡 | `protocol.ts:23-45,180-185`; `room.ts:403-456`; `gameService.ts:1959-1962` | Host/player/audience gates exist; player identity is secret-bound since `405c808`; pre-registration squat remains (F-01 residual) |
 | AUTH-10 | 🟡 | `directory.ts:334-380`; `room.ts:259-340` | `requestState` is member-only; duplicate join now requires the player secret |
-| AUTH-11 | 🟡 | `directory.ts:581-599`; `room.ts:606-610` | Per-room DO isolation holds; cross-room host discovery via `getRoomsByHost` (F-02) |
+| AUTH-11 | 🟢 | `directory.ts:581-606`; `room.ts:606-610` | Per-room DO isolation holds; `getRoomsByHost` now requires the host secret (F-02 discovery closed) |
 | AUTH-13 | 🟡 | `protocol.ts:137-163`; `directory.ts:217-247,697-713` | Per-socket and per-IP limits; `joinRoom`/host-secret attempts still reset per socket |
 
 ### B. Data layer & correctness
@@ -409,7 +417,7 @@ are not open findings:
 | Priority | Item | Finding(s) | Effort |
 |---|---|---|---|
 | P0 | ~~Server-issued per-player resume secret + socket binding; host kick RPC~~ — done in `405c808` | F-01 | M |
-| P1 | Require the host secret on `getRoomsByHost`; stop deriving host id from client input | F-02 | M |
+| P1 | ~~Require the host secret on `getRoomsByHost`~~ — done in item 38; server-issued host ids remain | F-02 | M |
 | P1 | Configure the GCP hard TTS quota and budget/alert; record ids in `DEPLOYMENT.md` | OPS-18 | S |
 | P1 | Add the CI/typecheck gate before any external launch | OPS-03 / item 21 | S–M |
 
@@ -436,7 +444,8 @@ are not open findings:
 
 - Fully re-verify F-01 after `405c808` with a second-socket/wrong-secret probe and
   the residual pre-registration race; re-run the duplicate-join and host-squat
-  probes. F-02 is still open.
+  probes. F-02 discovery is fixed (item 38); the first-create squat remains until
+  host ids are server-issued.
 - Re-check OPS-18 only after the GCP console evidence is recorded.
 - Carry forward F-03/F-04/F-05/F-06/F-07 with this date if untouched.
 - Re-run the deterministic passes (npm audit, secret scan, worker/unit/e2e/smoke)

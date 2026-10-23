@@ -1,6 +1,6 @@
 import { I18N_EN } from './en';
 import { I18N_EL } from './el';
-import { Language } from '../data/questions_manager';
+import { Language } from './questions';
 
 export type TranslationKey = keyof typeof I18N_EN;
 
