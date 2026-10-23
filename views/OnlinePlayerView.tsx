@@ -574,7 +574,7 @@ export const OnlinePlayerView: React.FC<OnlinePlayerViewProps> = ({
                         <div className="absolute top-2 right-2 bg-black/50 px-3 py-1 rounded-full border border-white/20 backdrop-blur-md z-50">
                             <div className="flex items-center gap-2">
                                 <Clock size={16} className="text-yellow-400 animate-pulse" />
-                                <span className="font-mono font-bold text-lg text-white">{state.timeLeft}</span>
+                                <span className="font-mono font-bold text-2xl leading-7 text-white">{state.timeLeft}</span>
                             </div>
                         </div>
                         <CategoryRoulette

@@ -174,11 +174,14 @@ export type PreviewModel =
 
 export type Breakpoint = 'base' | 'sm' | 'md' | 'lg' | 'xl' | '2xl';
 
+export type SelectedStyleProperty = 'fontSize' | 'lineHeight' | 'textAlign';
+
 export interface ElementSnapshot {
     width: number;
     height: number;
     fontSize: string;
     lineHeight: string;
+    textAlign: string;
 }
 
 export interface ResizeChange {
@@ -206,6 +209,7 @@ export interface DesignerElementInfo {
     rect: { x: number; y: number; width: number; height: number };
     fontSize: string;
     lineHeight: string;
+    textAlign: string;
     color: string;
     backgroundColor: string;
     overflowX: string;

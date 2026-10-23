@@ -12,6 +12,7 @@ import type {
     GameView,
     ResizeChange,
     ScreenId,
+    SelectedStyleProperty,
     TextLength,
 } from './types';
 import { DEFAULT_CONFIG } from './types';
@@ -56,7 +57,7 @@ export const DesignerView: React.FC = () => {
     const [exportNonce, setExportNonce] = useState(0);
     const [resetElementNonce, setResetElementNonce] = useState(0);
     const [resetAllNonce, setResetAllNonce] = useState(0);
-    const [styleRequest, setStyleRequest] = useState<{ property: 'fontSize' | 'lineHeight'; value: string; nonce: number } | null>(null);
+    const [styleRequest, setStyleRequest] = useState<{ property: SelectedStyleProperty; value: string; nonce: number } | null>(null);
     const [revealRequest, setRevealRequest] = useState<{ selector: string; nonce: number } | null>(null);
     const configRef = useRef(config);
     const diagnosticsRef = useRef(diagnostics);
@@ -269,7 +270,7 @@ export const DesignerView: React.FC = () => {
         setRevealRequest({ selector, nonce: Date.now() });
     }, []);
 
-    const setSelectedStyle = useCallback((property: 'fontSize' | 'lineHeight', value: string) => {
+    const setSelectedStyle = useCallback((property: SelectedStyleProperty, value: string) => {
         setStyleRequest((current) => ({ property, value, nonce: (current?.nonce ?? 0) + 1 }));
     }, []);
 

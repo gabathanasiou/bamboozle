@@ -20,17 +20,19 @@ import type {
     ElementSnapshot,
     PreviewModel,
     ResizeChange,
+    SelectedStyleProperty,
 } from './types';
 import type { ParentToPreviewMessage, PreviewToParentMessage } from './bridge';
 
 const ROOT_ID = 'designer-preview-root';
 type StylePatch = Partial<Record<
-    'width' | 'height' | 'minWidth' | 'minHeight' | 'maxWidth' | 'maxHeight' | 'flex' | 'boxSizing' | 'fontSize' | 'lineHeight',
+    'width' | 'height' | 'minWidth' | 'minHeight' | 'maxWidth' | 'maxHeight' | 'flex' | 'boxSizing' | 'fontSize' | 'lineHeight' | 'textAlign',
     string
 >>;
 const MANAGED_STYLE_KEYS: Array<keyof StylePatch> = [
-    'width', 'height', 'minWidth', 'minHeight', 'maxWidth', 'maxHeight', 'flex', 'boxSizing', 'fontSize', 'lineHeight',
+    'width', 'height', 'minWidth', 'minHeight', 'maxWidth', 'maxHeight', 'flex', 'boxSizing', 'fontSize', 'lineHeight', 'textAlign',
 ];
+const cssPropertyName = (key: string) => key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
 const noop = () => undefined;
 const actions = createPreviewActions();
 
@@ -109,6 +111,7 @@ export const PreviewSurface: React.FC = () => {
             height: Math.round(rect.height),
             fontSize: style.fontSize,
             lineHeight: style.lineHeight,
+            textAlign: style.textAlign,
         };
     }, []);
 
@@ -142,6 +145,7 @@ export const PreviewSurface: React.FC = () => {
                 boxSizing: element.style.boxSizing,
                 fontSize: element.style.fontSize,
                 lineHeight: element.style.lineHeight,
+                textAlign: element.style.textAlign,
             });
         }
         if (!resizeBaselinesRef.current.has(selector)) {
@@ -187,6 +191,7 @@ export const PreviewSurface: React.FC = () => {
                 && before.height === after.height
                 && before.fontSize === after.fontSize
                 && before.lineHeight === after.lineHeight
+                && before.textAlign === after.textAlign
             ) {
                 return;
             }
@@ -219,17 +224,17 @@ export const PreviewSurface: React.FC = () => {
             const original = originalStylesRef.current.get(selector);
             if (original) {
                 Object.entries(original).forEach(([key, value]) => {
-                    element.style.setProperty(key, value);
+                    element.style.setProperty(cssPropertyName(key), value);
                 });
             } else {
                 MANAGED_STYLE_KEYS.forEach((key) => {
-                    element.style.removeProperty(key);
+                    element.style.removeProperty(cssPropertyName(key));
                 });
             }
             const patch = state.get(selector);
             if (patch) {
                 Object.entries(patch).forEach(([key, value]) => {
-                    element.style.setProperty(key, value, key === 'width' || key === 'height' ? 'important' : '');
+                    element.style.setProperty(cssPropertyName(key), value, key === 'width' || key === 'height' ? 'important' : '');
                 });
             }
         });
@@ -312,11 +317,11 @@ export const PreviewSurface: React.FC = () => {
             const original = originalStylesRef.current.get(targetSelector);
             if (original) {
                 Object.entries(original).forEach(([key, value]) => {
-                    target.style.setProperty(key, value);
+                    target.style.setProperty(cssPropertyName(key), value);
                 });
             } else {
                 MANAGED_STYLE_KEYS.forEach((key) => {
-                    target.style.removeProperty(key);
+                    target.style.removeProperty(cssPropertyName(key));
                 });
             }
             editStateRef.current.delete(targetSelector);
@@ -343,7 +348,7 @@ export const PreviewSurface: React.FC = () => {
         }
     }, [applyEditState, commitEditHistory, post, refreshResizeChanges, selected?.selector]);
 
-    const setSelectedStyle = useCallback((property: 'fontSize' | 'lineHeight', value: string) => {
+    const setSelectedStyle = useCallback((property: SelectedStyleProperty, value: string) => {
         const selector = selected?.selector;
         if (!selector) return;
         const element = document.querySelector<HTMLElement>(selector);
@@ -351,7 +356,8 @@ export const PreviewSurface: React.FC = () => {
         const targets = getSimilarTargets(element).map(captureTarget);
         targets.forEach(({ element: target, selector: targetSelector }) => {
             if (property === 'fontSize') target.style.fontSize = value;
-            else target.style.lineHeight = value;
+            else if (property === 'lineHeight') target.style.lineHeight = value;
+            else target.style.textAlign = value;
             const patch = editStateRef.current.get(targetSelector) ?? {};
             patch[property] = value;
             editStateRef.current.set(targetSelector, patch);

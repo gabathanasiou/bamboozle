@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+    AlignCenter, AlignJustify, AlignLeft, AlignRight,
     Copy, Crown, Dice5, Download, Eye, FileJson, Home, LogIn, Megaphone, PenLine,
     Play, RotateCw, ScanLine, Settings as SettingsIcon, Shapes, Trash2, Trophy, Users, Vote,
     WifiOff, Wrench,
@@ -14,6 +15,7 @@ import type {
     GameView,
     ResizeChange,
     ScreenId,
+    SelectedStyleProperty,
     TextLength,
     ViewportConfig,
 } from './types';
@@ -31,9 +33,20 @@ const ICONS: Record<string, LucideIcon> = {
     Vote, Eye, Trophy, Crown,
 };
 
+const ALIGN_OPTIONS = [
+    { value: 'left', label: 'Left', Icon: AlignLeft },
+    { value: 'center', label: 'Center', Icon: AlignCenter },
+    { value: 'right', label: 'Right', Icon: AlignRight },
+    { value: 'justify', label: 'Justify', Icon: AlignJustify },
+] as const;
+
+const isActiveAlign = (current: string, value: string) => (
+    current === value || (value === 'left' && current === 'start')
+);
+
 const SelectedStyleInputs: React.FC<{
     selectedElement: DesignerElementInfo;
-    onSetStyle: (property: 'fontSize' | 'lineHeight', value: string) => void;
+    onSetStyle: (property: SelectedStyleProperty, value: string) => void;
 }> = ({ selectedElement, onSetStyle }) => {
     const [fontSize, setFontSize] = useState(parseFloat(selectedElement.fontSize) || 0);
     const [lineHeight, setLineHeight] = useState(parseFloat(selectedElement.lineHeight) || 0);
@@ -65,6 +78,28 @@ const SelectedStyleInputs: React.FC<{
                     onSetStyle('lineHeight', value > 0 ? `${value}px` : 'normal');
                 }}
             />
+            <div className="col-span-2 space-y-1">
+                <div className="text-[9px] font-bold uppercase tracking-wide text-slate-500">Text align</div>
+                <div className="flex gap-1 rounded-lg border border-white/10 bg-black/20 p-1">
+                    {ALIGN_OPTIONS.map(({ value, label, Icon }) => {
+                        const active = isActiveAlign(selectedElement.textAlign, value);
+                        return (
+                            <button
+                                key={value}
+                                type="button"
+                                title={`Align ${label.toLowerCase()}`}
+                                aria-pressed={active}
+                                onClick={() => onSetStyle('textAlign', value)}
+                                className={`flex flex-1 items-center justify-center rounded-md py-1.5 transition-colors ${
+                                    active ? 'bg-yellow-400 text-black' : 'text-slate-400 hover:bg-white/10 hover:text-slate-200'
+                                }`}
+                            >
+                                <Icon size={13} />
+                            </button>
+                        );
+                    })}
+                </div>
+            </div>
         </div>
     );
 };
@@ -104,7 +139,7 @@ interface ControlPanelProps {
     onRevealIssue: (selector: string) => void;
     onResetElementSize: () => void;
     onResetAllSizes: () => void;
-    onSetSelectedStyle: (property: 'fontSize' | 'lineHeight', value: string) => void;
+    onSetSelectedStyle: (property: SelectedStyleProperty, value: string) => void;
     onCopyResizeRequest: () => void;
     onClearOverrides: () => void;
 }
@@ -608,19 +643,20 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                             <span className="text-[10px] font-black uppercase tracking-wide text-sky-200">Selected element</span>
                             <div className="flex items-center gap-1">
                                 <LabButton onClick={() => onCopyText(selectedElement.selector)} variant="ghost"><Copy size={11} /> Selector</LabButton>
-                                <LabButton onClick={onResetElementSize} variant="ghost"><RotateCw size={11} /> Reset size</LabButton>
+                                <LabButton onClick={onResetElementSize} variant="ghost" title="Reset size, type and alignment"><RotateCw size={11} /> Reset</LabButton>
                             </div>
                         </div>
                         <div className="break-all font-mono text-[9px] text-sky-200/70">{selectedElement.selector}</div>
                         <div className="grid grid-cols-2 gap-1 font-mono text-[9px] text-slate-400">
                             <span>{Math.round(selectedElement.rect.width)}×{Math.round(selectedElement.rect.height)}</span>
                             <span>{selectedElement.fontSize}/{selectedElement.lineHeight}</span>
+                            <span className="capitalize">align {selectedElement.textAlign}</span>
                             <span>overflow {selectedElement.overflowX}/{selectedElement.overflowY}</span>
                             <span>scroll {selectedElement.scrollWidth}×{selectedElement.scrollHeight}</span>
                         </div>
                         {selectedElement.text && <div className="line-clamp-3 text-[10px] text-slate-500">{selectedElement.text}</div>}
                         <SelectedStyleInputs selectedElement={selectedElement} onSetStyle={onSetSelectedStyle} />
-                        <div className="text-[9px] text-sky-300/50">Live size and type are preview-only; ask the agent to make them permanent.</div>
+                        <div className="text-[9px] text-sky-300/50">Live size, type and alignment are preview-only; ask the agent to make them permanent.</div>
                     </div>
                 )}
 
@@ -642,6 +678,9 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                                     {change.before.width}×{change.before.height} → {change.after.width}×{change.after.height}
                                     {' · '}
                                     {change.before.fontSize} → {change.after.fontSize}
+                                    {change.before.textAlign !== change.after.textAlign
+                                        ? ` · ${change.before.textAlign}→${change.after.textAlign}`
+                                        : ''}
                                     {change.similarCount > 1 ? ` · ${change.similarCount} similar` : ''}
                                 </div>
                             </button>

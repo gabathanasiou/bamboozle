@@ -63,24 +63,28 @@ INTRO/REVEAL/LEADER. Host-disconnected and room-closed overlays are player-side.
   lab is Bamboozle-only), which triages noise, maps selectors to shared
   components, and applies the intent as responsive code.
 - **Live element editor:** toggle **Resize selected**, pick an element, then drag
-  the yellow handle. The selected-element card also has **Font size** and
-  **Line height** inputs. **Apply to similar** is on by default: changes are
+  the yellow handle. The selected-element card also has **Font size**,
+  **Line height** and **Text align** (left / center / right / justify) controls;
+  the active alignment is highlighted from the element's computed style, so a
+  centre-aligned element does not look unset. **Apply to similar** is on by default: changes are
   applied to every visible element with the same tag + class signature (shared
   components), and the handoff records the group count. This is a DOM heuristic,
   not a React tree: it can overmatch elements that happen to share classes, so
   toggle it off for a one-off. A grouped edit is one undo step. Changes are
-  preview-only and reset when the scene remounts; use **Reset size**,
-  **Reset all**, or **Copy resize request** so the agent can codify them.
+  preview-only and reset when the scene remounts; use **Reset edits** (size,
+  type and alignment), **Reset all**, or **Copy resize request** so the agent can
+  codify them.
   Live edits persist across viewport changes so you can compare the same adjusted
   design at another size. Use **Reset all** to return to the natural responsive
   layout; an element that stays fixed at a new viewport is an active inline edit,
   not a responsive bug.
 - **Undo / redo:** header buttons and Cmd/Ctrl+Z / Cmd/Ctrl+Shift+Z (Ctrl+Y also
   redoes). This covers **live design edits only** — element box resize, font size,
-  line height, grouped similar-element edits, reset size, and reset all. It
+  line height, text alignment, grouped similar-element edits, reset edits, and
+  reset all. It
   deliberately does not undo screen, view, content, state, or viewport changes.
 - **Live changes:** the Inspect panel lists every changed element with its
-  before → after box/font sizes and a one-click resize request.
+  before → after box/font/alignment and a one-click resize request.
 - **Share:** URL hash, copy JSON, paste JSON, copy agent brief, PNG export.
 
 ## Diagnostics

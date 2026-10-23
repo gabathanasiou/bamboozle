@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Expand, RotateCw, ScanLine } from 'lucide-react';
-import type { DesignerConfig, DesignerDiagnostics, DesignerElementInfo, ResizeChange } from './types';
+import type { DesignerConfig, DesignerDiagnostics, DesignerElementInfo, ResizeChange, SelectedStyleProperty } from './types';
 import type { ParentToPreviewMessage, PreviewToParentMessage } from './bridge';
 import { VIEWPORT_BY_PRESET } from './catalog';
 
@@ -17,7 +17,7 @@ interface PreviewFrameProps {
     exportNonce: number;
     resetElementNonce: number;
     resetAllNonce: number;
-    styleRequest: { property: 'fontSize' | 'lineHeight'; value: string; nonce: number } | null;
+    styleRequest: { property: SelectedStyleProperty; value: string; nonce: number } | null;
     historyAction: { action: 'undo' | 'redo'; nonce: number } | null;
     revealRequest: { selector: string; nonce: number } | null;
     onToggleInspect: () => void;
