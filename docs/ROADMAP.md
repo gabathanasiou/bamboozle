@@ -259,3 +259,16 @@ retired to `docs/ROADMAP-ARCHIVE.md` as **one line**; git history keeps the narr
 - **Verify:** `npm audit` has no high/critical; build, unit, worker and e2e pass; no runtime-reachable advisory.
 - **Relations:** relates 21.
 
+## 45. Split TTS request budgets by path (`[ ]`)
+
+- **Request:** one shared `req:global` budget (5,000/day) lets a tenant or a leaked ops token silence premium narration for every room; the per-IP cap (500/day) needs only ten addresses to exhaust it (security review F-02).
+- **Approach:** separate counters for the ops API and room narration, add a per-room/per-host sub-budget, keep cache hits capped, and rely on Cloudflare edge limits for distributed volume. Files: `directory.ts`, `index.ts`, `room.ts`, `env.ts`, `docs/SERVER_HARDENING.md`.
+- **Verify:** one room cannot exhaust another room's narration budget; the ops API and rooms fail independently; normal play and cache hits still work; unit/smoke pass.
+- **Relations:** fixes review F-02; relates 18, 42.
+
+## 46. Serialize idempotent room creation (`[ ]`)
+
+- **Request:** the idempotent-create replay check spans awaits and `(host_id, create_key)` is non-unique, so two concurrent creates can insert two rooms for one key; replay then returns the older room (security review F-04).
+- **Approach:** re-check `rowForCreateKey` synchronously immediately before the insert (closing the just-initialized room on conflict), or add a partial unique index and treat the conflict as a replay. Files: `directory.ts`, `test/directory.test.ts`.
+- **Verify:** two concurrent creates with the same key yield one room; replay returns that room and secret; different keys still create separate rooms; worker tests pass.
+- **Relations:** fixes review F-04; relates 40.
