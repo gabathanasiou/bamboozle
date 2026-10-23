@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev --port 8787",
-    "dev:e2e": "wrangler dev --port 8787 --var HOST_GRACE_MS:8000 --var PLAYER_KICK_MS:8000 --var EMPTY_ROOM_MS:8000",
+    "dev": "wrangler dev --port 8787 --var MAX_CREATES_PER_HOUR:1000",
+    "dev:e2e": "wrangler dev --port 8787 --var MAX_CREATES_PER_HOUR:1000 --var HOST_GRACE_MS:8000 --var PLAYER_KICK_MS:8000 --var EMPTY_ROOM_MS:8000",
     "deploy": "wrangler deploy",
     "test": "vitest run",
     "test:watch": "vitest",

@@ -9,16 +9,17 @@ async function create(
   hostId = HOST,
   socketId = 'host-sock',
   secret?: string,
+  createKey?: string,
 ): Promise<{ roomCode: string; hostSecret: string }> {
   return runInDurableObject(directory(), async (instance: Directory) =>
-    instance.createRoomForHost(hostId, socketId, secret),
+    instance.createRoomForHost(hostId, socketId, secret, createKey),
   );
 }
 
 async function roomRows() {
   return runInDurableObject(directory(), (_instance: Directory, state) =>
     state.storage.sql
-      .exec('SELECT code, host_id, host_secret_hash, created_at, phase, player_count, pending_host_reconnect FROM rooms ORDER BY created_at ASC')
+      .exec('SELECT code, host_id, host_secret_hash, created_at, last_seen, create_key, phase, player_count, pending_host_reconnect FROM rooms ORDER BY created_at ASC')
       .toArray() as Array<Record<string, string | number>>,
   );
 }
@@ -41,6 +42,14 @@ async function ttsBudget(ip: string, chars: number): Promise<Response> {
   });
 }
 
+async function ttsRequest(ip: string): Promise<Response> {
+  return directory().fetch('https://directory/internal/tts-request', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ ip }),
+  });
+}
+
 describe('Directory', () => {
   beforeEach(async () => {
     await runInDurableObject(directory(), async (instance: Directory, state) => {
@@ -59,6 +68,65 @@ describe('Directory', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ code, host_id: HOST, pending_host_reconnect: 0 });
     expect(String(rows[0].host_secret_hash)).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it('replays an idempotent create with the same room and secret', async () => {
+    const key = 'a'.repeat(32);
+    const first = await create(HOST, 'sock-1', undefined, key);
+    const replay = await create(HOST, 'sock-2', undefined, key);
+
+    expect(replay.roomCode).toBe(first.roomCode);
+    expect(replay.hostSecret).toBe(first.hostSecret);
+    expect((await roomRows())[0]).toMatchObject({ code: first.roomCode, create_key: key });
+
+    // A different key still needs the host secret for a second room.
+    await expect(create(HOST, 'sock-3', undefined, 'b'.repeat(32))).rejects.toThrow(
+      'HOST_SECRET_REQUIRED',
+    );
+
+    // A key replay must not leak a room to someone with the wrong secret.
+    const second = await create(HOST, 'sock-4', first.hostSecret, 'c'.repeat(32));
+    await expect(create(HOST, 'sock-5', 'f'.repeat(32), 'c'.repeat(32))).rejects.toThrow(
+      'HOST_SECRET_REQUIRED',
+    );
+    expect((await roomRows()).map((row) => row.code)).toContain(second.roomCode);
+  });
+
+  it('drains legacy rooms without a host-secret hash', async () => {
+    await runInDurableObject(directory(), (_instance: Directory, state) => {
+      state.storage.sql.exec(
+        `INSERT INTO rooms (code, host_id, created_at, phase, player_count, pending_host_reconnect)
+         VALUES ('OLD1', ?, ?, 'LOBBY', 0, 0)`,
+        HOST,
+        Date.now(),
+      );
+    });
+
+    const created = await create();
+    expect(created.roomCode).not.toBe('OLD1');
+
+    const rows = await roomRows();
+    expect(rows.map((row) => row.code)).not.toContain('OLD1');
+    expect(rows).toHaveLength(1);
+  });
+
+  it('keeps the per-IP create budget in durable storage', async () => {
+    const results = await runInDurableObject(directory(), (instance: Directory) => {
+      const calls: boolean[] = [];
+      for (let i = 0; i < 11; i++) {
+        calls.push((instance as unknown as { consumeCreate(ip: string): boolean }).consumeCreate('203.0.113.9'));
+      }
+      return calls;
+    });
+    expect(results.slice(0, 10)).toEqual(Array(10).fill(true));
+    expect(results[10]).toBe(false);
+
+    const row = await runInDurableObject(directory(), (_instance: Directory, state) =>
+      state.storage.sql
+        .exec<{ count: number }>("SELECT count FROM rate_limits WHERE key = 'create:203.0.113.9'")
+        .toArray()[0],
+    );
+    expect(row.count).toBe(11);
   });
 
   it('requires the host secret to create another room for the same host', async () => {
@@ -195,5 +263,17 @@ describe('Directory', () => {
 
     const overGlobal = await ttsBudget('2.2.2.2', 1);
     expect(overGlobal.status).toBe(429);
+  });
+
+  it('caps TTS requests per IP and globally', async () => {
+    expect((await ttsRequest('9.9.9.9')).status).toBe(200);
+    expect((await ttsRequest('9.9.9.9')).status).toBe(200);
+
+    const overIp = await ttsRequest('9.9.9.9');
+    expect(overIp.status).toBe(429);
+    expect(await overIp.json()).toMatchObject({ error: 'TTS_RATE_EXCEEDED' });
+
+    expect((await ttsRequest('8.8.8.8')).status).toBe(200);
+    expect((await ttsRequest('8.8.8.8')).status).toBe(429);
   });
 });

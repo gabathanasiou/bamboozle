@@ -53,24 +53,39 @@ limit.
 id. Without it (or with a wrong one) the Directory returns `[]`, so host ids
 cannot be enumerated and other hosts' room codes/player names are not disclosed.
 
+The per-IP `createRoom` budget is stored in Directory SQLite, so an isolate
+eviction or restart cannot reset it. A sweep alarm reaps rooms whose `last_seen`
+is older than 6h even if a socket still lingers, and drains rows that predate the
+host-secret design. `last_seen` moves at most once a minute per room on a
+successful join/relay.
+
+Both TTS paths consume a durable per-IP and global request budget before doing
+work, so cache hits cannot be spammed for free. `POST /api/tts` also reads its
+body through a hard 16 KiB byte cap instead of trusting `Content-Length`.
+Rejected `gameStateUpdate`s produce a `roomError` event to the host.
+
 ## 4. Abuse and availability caps
 
 | Cap | Default | Where |
 |---|---|---|
 | WebSockets per IP / total | 32 / 1000 | Directory WebSocket upgrade |
 | WebSocket upgrades per IP | 30 per minute | Directory upgrade budget |
-| `createRoom` per IP | 10 per hour | Directory |
+| `createRoom` per IP | 10 per hour, durable | Directory (`MAX_CREATES_PER_HOUR`) |
 | Rooms per socket | 1 | Directory (second create → `ALREADY_IN_ROOM`) |
 | Rooms total | 500 | Directory |
 | Players per room | 6 (+ host) | `BambooRoom.join` / `playerEvent` |
 | Audience per room | 20 | `BambooRoom.join` / `playerEvent` |
 | Broadcast state | 128 KiB | `BambooRoom.stateUpdate` |
 | Broadcast frame | 256 KiB | Directory |
-| Stale-room sweep | every 6h | Directory DO alarm |
+| TTS requests per IP / global | 500 / 5000 per day, durable | Directory (`TTS_IP_DAILY_REQUESTS`, `TTS_DAILY_REQUESTS`) |
+| Ops `/api/tts` body | 16 KiB, streamed byte cap | Worker |
+| Stale-room sweep | every 6h; reaps rooms idle 6h and legacy rows | Directory DO alarm |
 
 All limits are env-overridable (`MAX_SOCKETS_PER_IP`, `MAX_SOCKETS_TOTAL`,
-`MAX_TOTAL_ROOMS`, `MAX_PLAYERS_PER_ROOM`, `MAX_AUDIENCE_PER_ROOM`,
-`MAX_STATE_BYTES`). Cloudflare rate-limit rules / Turnstile are an additional
+`MAX_TOTAL_ROOMS`, `MAX_CREATES_PER_HOUR`, `MAX_PLAYERS_PER_ROOM`,
+`MAX_AUDIENCE_PER_ROOM`, `MAX_STATE_BYTES`, `TTS_DAILY_CHARS`,
+`TTS_IP_DAILY_CHARS`, `TTS_DAILY_REQUESTS`, `TTS_IP_DAILY_REQUESTS`).
+Cloudflare rate-limit rules / Turnstile are an additional
 edge layer; configure them in the dashboard for `/ws` and `/api/tts` (for
 example 30 requests/minute per IP) so abusive traffic never reaches the DO.
 

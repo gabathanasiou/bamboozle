@@ -63,6 +63,11 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))" \
   | npx wrangler secret put TTS_API_TOKEN
 ```
 
+Rotate `TTS_API_TOKEN` every 90 days (or immediately if it appears outside
+`wrangler secret`): generate a new value, run `wrangler secret put` again, then
+update the caller. The old value stops working as soon as the new secret is
+deployed; there is no dual-token window.
+
 `wrangler.toml` already declares:
 
 - `ROOMS` → `BambooRoom`, `DIRECTORY` → `Directory`, migration tag `v1`, `new_sqlite_classes`
@@ -72,8 +77,16 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))" \
 - `HOST_GRACE_MS`, `PLAYER_KICK_MS`, `EMPTY_ROOM_MS` (default 60000; e2e overrides to 8000)
 - `TTS_DAILY_CHARS = "50000"`, `TTS_IP_DAILY_CHARS = "5000"` (shared by the ops
   API and room narration; cache hits are free)
+- `TTS_DAILY_REQUESTS = "5000"`, `TTS_IP_DAILY_REQUESTS = "500"` (durable
+  request caps; they also cover cache hits)
 - `MAX_SOCKETS_PER_IP`, `MAX_SOCKETS_TOTAL`, `MAX_TOTAL_ROOMS`,
-  `MAX_PLAYERS_PER_ROOM`, `MAX_AUDIENCE_PER_ROOM`, `MAX_STATE_BYTES` (abuse caps)
+  `MAX_CREATES_PER_HOUR = "10"`, `MAX_PLAYERS_PER_ROOM`, `MAX_AUDIENCE_PER_ROOM`,
+  `MAX_STATE_BYTES` (abuse caps)
+
+Rollout note: rooms indexed before the host-secret deploy have no hash and can
+never be reclaimed. The Directory drains them on the next sweep/create; hosts
+active across that deploy get a fresh room. This is a one-time loss, not a
+recurring migration.
 
 ## CI gate
 

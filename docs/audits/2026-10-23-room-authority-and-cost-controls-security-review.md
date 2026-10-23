@@ -4,8 +4,9 @@
 > Read-only review: no file was modified by the audit pass. Findings found during
 > verification were remediated in `ec036c1` and `0ee030e`; this report covers the
 > final tip. **Post-review remediation:** F-01 was fixed in `405c808`
-> (per-player resume secret + socket binding); the finding is retained as the
-> verified pre-fix issue. **This is not a penetration test** — findings come from
+> (per-player resume secret + socket binding); F-02 discovery in item 38; F-03–F-07
+> in items 39–43. Findings are retained as the verified pre-fix issues.
+> **This is not a penetration test** — findings come from
 > source, configuration and tool output, not live exploitation.
 > Standards referenced: OWASP ASVS 5.0.0, OWASP Top 10.
 > Prior audit: `docs/audits/2026-10-23-security-audit.md` (2026-10-23).
@@ -20,19 +21,22 @@
 |---|---|---|---|---|
 | F-01 | A second socket can claim an existing player id and act/kick as that player — **fixed in `405c808`** | High | P0 | first paying customer |
 | F-02 | `getRoomsByHost` is unauthenticated; host ids can be discovered and squatted — **discovery closed by item 38** | Medium | P2 | scale / privacy |
-| F-03 | Global socket/room caps are saturable; create rate is in-memory | Medium | P2 | scale |
-| F-04 | A lost `createRoom` ack strands the host secret and wipes the identity | Low | P3 | hardening |
-| F-05 | Pre-deploy rooms have no host-secret hash and cannot be reclaimed | Low | P3 | rollout |
-| F-06 | `/api/tts` has no request-rate limit; body cap trusts `Content-Length` | Low | P3 | hardening |
-| F-07 | `STATE_TOO_LARGE` is silently dropped for `gameStateUpdate` | Low | P3 | hardening |
+| F-03 | Global socket/room caps are saturable; create rate is in-memory — **fixed by item 39** | Medium | P2 | scale |
+| F-04 | A lost `createRoom` ack strands the host secret and wipes the identity — **fixed by item 40** | Low | P3 | hardening |
+| F-05 | Pre-deploy rooms have no host-secret hash and cannot be reclaimed — **fixed by item 41** | Low | P3 | rollout |
+| F-06 | `/api/tts` has no request-rate limit; body cap trusts `Content-Length` — **fixed by item 42** | Low | P3 | hardening |
+| F-07 | `STATE_TOO_LARGE` is silently dropped for `gameStateUpdate` — **fixed by item 43** | Low | P3 | hardening |
 
 **Verdict:** The batch closes the original F-02/F-03/F-04/F-05/F-12 gaps and
 materially improves cost control: `/api/tts` is off by default, both TTS paths
 share a daily/per-IP character budget, and room/socket/create/player/state caps
 plus a sweep alarm are in place. F-01 was fixed after the review (`405c808`), so
 the player path is now bound to a per-player resume secret and socket. F-02's
-room-discovery disclosure is closed by item 38 (host secret required); what
-remains is F-03 (global caps) and the external GCP budget/alert.
+room-discovery disclosure is closed by item 38 (host secret required). F-03–F-07
+were fixed in items 39–43 (durable create budget, idle-room reap, idempotent
+create, legacy drain, TTS request cap/streamed body, state-rejection signal).
+The only open items are operational: the GCP hard quota/budget alert and the
+Cloudflare edge rules, both dashboard-only.
 
 ## 2. Scope & method
 
@@ -166,7 +170,7 @@ partially open until host ids are server-issued (phase-2 entitlement token),
 because a squatter who guesses an unused id can still create first. Tests:
 directory unit + 15-step smoke cover missing/wrong secret.
 
-### F-03 — Global caps are saturable and the create limiter is in-memory · Medium · P2 · verified
+### F-03 — Global caps are saturable and the create limiter is in-memory · Medium · P2 · fixed
 
 - **Where:** `workers/bamboozle-rooms/src/directory.ts:155-181,497-501,669-679,697-713`,
   `workers/bamboozle-rooms/src/env.ts:31-34`.
@@ -190,7 +194,16 @@ directory unit + 15-step smoke cover missing/wrong secret.
 - **Verification:** Verifier confirmed the corrections (single-IP path is capped;
   zombie path mostly removed by the one-room guard). Confidence 7.
 
-### F-04 — Lost `createRoom` ack strands the host secret · Low · P3 · verified
+**Remediation (item 39):** the per-IP `createRoom` budget now lives in Directory
+SQLite (`rate_limits`), so an isolate eviction/restart cannot reset it;
+`MAX_CREATES_PER_HOUR` is env-tunable. Rooms carry a throttled `last_seen` stamp
+updated on successful joins/relays; the sweep reaps rooms idle for 6h even when a
+socket still lingers, and drains legacy rows. Distributed saturation still needs
+the Cloudflare edge rules/Turnstile (dashboard-only), but one IP can no longer
+refill the room cap and abandoned rooms no longer hold it. Tests: durable create
+budget + idle/legacy sweep.
+
+### F-04 — Lost `createRoom` ack strands the host secret · Low · P3 · fixed
 
 - **Where:** `services/gameService.ts:710-746`,
   `workers/bamboozle-rooms/src/directory.ts:492-520`.
@@ -206,7 +219,15 @@ directory unit + 15-step smoke cover missing/wrong secret.
 - **Effort:** S.
 - **Verification:** Verifier confirmed; confidence 7.
 
-### F-05 — Pre-deploy rooms cannot be reclaimed · Low · P3 · verified
+**Remediation (item 40):** `createRoom` accepts an unguessable client
+`createKey`; replaying `(hostId, createKey)` returns the same `{roomCode,
+hostSecret}`. The first room's secret is HMAC-derived from a Directory-local
+pepper, so no raw secret is stored, and a replay with the wrong host secret is
+rejected. The client keeps the pending key across reloads and clears it on
+success, so a lost ack no longer wipes the player identity. Tests: directory
+replay/placeholder-key rejection; smoke replays on a second socket.
+
+### F-05 — Pre-deploy rooms cannot be reclaimed · Low · P3 · fixed
 
 - **Where:** `workers/bamboozle-rooms/src/directory.ts:107-113,503-520`,
   `workers/bamboozle-rooms/src/room.ts:275-282`.
@@ -220,7 +241,14 @@ directory unit + 15-step smoke cover missing/wrong secret.
 - **Effort:** S.
 - **Verification:** Verifier confirmed; confidence 8.
 
-### F-06 — `/api/tts` request-rate and body-cap gaps · Low · P3 · verified
+**Remediation (item 41):** the Directory drains any row with an empty
+`host_secret_hash` on create or sweep (`LEGACY_ROOM`), then lets the host create a
+fresh room instead of returning `HOST_SECRET_REQUIRED`; `last_seen` is
+backfilled from `created_at` for existing rows. The one-time rollout loss is
+documented in `DEPLOYMENT.md`, and a directory test seeds a legacy row to prove
+the drain and the fresh create.
+
+### F-06 — `/api/tts` request-rate and body-cap gaps · Low · P3 · fixed
 
 - **Where:** `workers/bamboozle-rooms/src/index.ts:80-101,112-122`.
 - **What:** The route is token-gated, but there is no request-rate limit (cache
@@ -235,7 +263,14 @@ directory unit + 15-step smoke cover missing/wrong secret.
 - **Verification:** Verifier confirmed the gate works and these residual gaps;
   confidence 7.
 
-### F-07 — `STATE_TOO_LARGE` is silently dropped · Low · P3 · verified
+**Remediation (item 42):** both TTS paths consume a durable per-IP/global request
+budget before doing work (`TTS_IP_DAILY_REQUESTS` 500, `TTS_DAILY_REQUESTS`
+5000), so cache hits are capped. `POST /api/tts` reads its body through a hard
+16 KiB streamed byte cap instead of trusting `Content-Length`, and the
+`TTS_API_TOKEN` 90-day rotation procedure is in `DEPLOYMENT.md`. Tests:
+directory request budget + a chunked/oversized body test.
+
+### F-07 — `STATE_TOO_LARGE` is silently dropped · Low · P3 · fixed
 
 - **Where:** `workers/bamboozle-rooms/src/room.ts:377-386`,
   `workers/bamboozle-rooms/src/directory.ts:374-375`.
@@ -248,6 +283,11 @@ directory unit + 15-step smoke cover missing/wrong secret.
   `error` event to the host.
 - **Effort:** S.
 - **Verification:** Verifier confirmed; confidence 8.
+
+**Remediation (item 43):** a rejected `gameStateUpdate` now produces a
+`roomError` event to the sending host, and the client re-syncs from
+`requestState` instead of keeping a state the players never received. The smoke
+sends a 200 KiB state and asserts the event.
 
 ### Remediation applied during this review
 
@@ -265,8 +305,9 @@ are not open findings:
 - Per-IP socket default raised from 12 to 32 (a same-NAT 2-room/6-player session
   needs up to 14), an upgrade budget (30/min/IP) was added, and `joinRoom` now
   counts against the per-IP read budget.
-- The 6h sweep skips rooms with live Directory sockets; one socket may own only
-  one room.
+- The 6h sweep keys off `created_at`/`last_seen` and reaps idle rooms, including
+  legacy rows; one socket may own only one room. (Item 39 later made `last_seen`
+  authoritative and stopped sparing idle socket-held rooms.)
 
 ## 5. Checklist verdicts
 
@@ -281,7 +322,7 @@ are not open findings:
 | AUTH-09 | 🟡 | `protocol.ts:23-45,180-185`; `room.ts:403-456`; `gameService.ts:1959-1962` | Host/player/audience gates exist; player identity is secret-bound since `405c808`; pre-registration squat remains (F-01 residual) |
 | AUTH-10 | 🟡 | `directory.ts:334-380`; `room.ts:259-340` | `requestState` is member-only; duplicate join now requires the player secret |
 | AUTH-11 | 🟢 | `directory.ts:581-606`; `room.ts:606-610` | Per-room DO isolation holds; `getRoomsByHost` now requires the host secret (F-02 discovery closed) |
-| AUTH-13 | 🟡 | `protocol.ts:137-163`; `directory.ts:217-247,697-713` | Per-socket and per-IP limits; `joinRoom`/host-secret attempts still reset per socket |
+| AUTH-13 | 🟢 | `protocol.ts:137-163`; `directory.ts:217-247,838-865` | Per-socket and per-IP limits; the create budget is durable since item 39 |
 
 ### B. Data layer & correctness
 
@@ -289,7 +330,7 @@ are not open findings:
 |---|---|---|---|
 | DATA-01 | 🟡 | `directory.ts:87-113` | Additive schema, no version/backfill/down path |
 | DATA-02 | 🟡 | `directory.ts:107-113` | `ALTER TABLE` on the small Directory table; catch-all hides failures |
-| DATA-03 | ✅ | `directory.ts:88-105,669-679`; `room.ts:63-89` | PKs, host/created indexes, budget PK, indexed sweep |
+| DATA-03 | ✅ | `directory.ts:88-115,838-865`; `room.ts:63-89` | PKs, host/created/create-key indexes, durable rate table, indexed sweep |
 | DATA-09 | 🟡 | `room.ts:377-393,403-456`; `protocol.ts:253-269` | Server-side id/allowlist/size checks; `gameState` is still untyped JSON |
 | DATA-15 | 🟡 | `room.ts:78-81,606-631` | One unversioned JSON row; only top-level `hostId` stripped |
 | DATA-17 | 🟡 | `directory.ts:492-520`; `room.ts:303-340` | Host create is secret-bound; player join is an id-only upsert (F-01) |
@@ -418,8 +459,13 @@ are not open findings:
 |---|---|---|---|
 | P0 | ~~Server-issued per-player resume secret + socket binding; host kick RPC~~ — done in `405c808` | F-01 | M |
 | P1 | ~~Require the host secret on `getRoomsByHost`~~ — done in item 38; server-issued host ids remain | F-02 | M |
+| P1 | ~~Durable create budget + idle-room reap~~ — done in item 39 | F-03 | M |
+| P2 | ~~Idempotent create~~ — done in item 40 | F-04 | S |
+| P2 | ~~Drain legacy rooms~~ — done in item 41 | F-05 | S |
+| P2 | ~~TTS request cap + streamed body cap + token rotation cadence~~ — done in item 42 | F-06 | S |
+| P2 | ~~Surface rejected state to the host~~ — done in item 43 | F-07 | S |
 | P1 | Configure the GCP hard TTS quota and budget/alert; record ids in `DEPLOYMENT.md` | OPS-18 | S |
-| P1 | Add the CI/typecheck gate before any external launch | OPS-03 / item 21 | S–M |
+| P1 | ~~Add the CI/typecheck gate~~ — done in item 21 | OPS-03 / item 21 | S–M |
 
 ### Before enterprise review
 
@@ -447,7 +493,10 @@ are not open findings:
   probes. F-02 discovery is fixed (item 38); the first-create squat remains until
   host ids are server-issued.
 - Re-check OPS-18 only after the GCP console evidence is recorded.
-- Carry forward F-03/F-04/F-05/F-06/F-07 with this date if untouched.
+- F-03–F-07 are fixed (items 39–43); re-run the create-replay, legacy-drain,
+  idle-sweep, TTS body/request and oversized-state probes on the next pass.
+- Cloudflare edge rules/Turnstile remain manual; record the deployed rules before
+  claiming F-03 fully closed at scale.
 - Re-run the deterministic passes (npm audit, secret scan, worker/unit/e2e/smoke)
   and diff against this scoreboard.
 - Suggested cadence: before item 5 (paid entitlements), before the Play Store
