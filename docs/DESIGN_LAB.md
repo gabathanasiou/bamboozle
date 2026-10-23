@@ -48,8 +48,10 @@ INTRO/REVEAL/LEADER. Host-disconnected and room-closed overlays are player-side.
 - **Content:** short/normal/long/extreme stress presets plus editable fact, category,
   truth answer, every lie, and player names — also scoped by screen. Overrides are
   cleared when you change the stress preset or press “Clear copy overrides”.
-- **Viewport:** grouped Safari/Apple-style presets (iPhone, iPad, Mac, Desktop,
-  Android, TV), drag handles, rotate, fit/100%, zoom. Presets use CSS viewport
+- **Viewport:** the preview toolbar above the frame holds the grouped
+  Safari/Apple-style preset picker (iPhone, iPad, Mac, Desktop, Android, TV),
+  editable width/height, the active breakpoint, rotate, fit/100%, zoom and
+  randomize-state. The frame also has drag handles. Presets use CSS viewport
   points, not panel pixels; Safari recommends a real simulator/device for exact
   safe-area and browser-chrome behaviour. The active Tailwind breakpoint
   (base / sm / md / lg / xl / 2xl) is shown next to the scene.

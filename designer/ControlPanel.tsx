@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
     AlignCenter, AlignJustify, AlignLeft, AlignRight,
-    Copy, Crown, Dice5, Download, Eye, FileJson, Home, LogIn, Megaphone, PenLine,
+    Copy, Crown, Download, Eye, FileJson, Home, LogIn, Megaphone, PenLine,
     Play, RotateCw, ScanLine, Settings as SettingsIcon, Shapes, Trash2, Trophy, Users, Vote,
     WifiOff, Wrench,
 } from 'lucide-react';
@@ -21,7 +21,7 @@ import type {
 } from './types';
 import type { DeepPartial } from './bridge';
 import {
-    SCREENS, SCREEN_GROUPS, TEXT_LENGTH_OPTIONS, VIEW_OPTIONS, VIEWPORT_BY_PRESET, VIEWPORT_GROUPS,
+    SCREENS, SCREEN_GROUPS, TEXT_LENGTH_OPTIONS, VIEW_OPTIONS,
     getCopy, isGameScreen,
 } from './catalog';
 import {
@@ -125,10 +125,7 @@ interface ControlPanelProps {
     onScreenChange: (screen: ScreenId) => void;
     onViewChange: (view: GameView) => void;
     onContentLengthChange: (length: TextLength) => void;
-    onViewportChange: (width: number, height: number, preset: string) => void;
-    onRotate: () => void;
     onReset: () => void;
-    onRandomize: () => void;
     onCopyBrief: () => void;
     onCopyJson: () => void;
     onApplyJson: (json: string) => void;
@@ -154,10 +151,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     onScreenChange,
     onViewChange,
     onContentLengthChange,
-    onViewportChange,
-    onRotate,
     onReset,
-    onRandomize,
     onCopyBrief,
     onCopyJson,
     onApplyJson,
@@ -200,9 +194,6 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     const setGame = (patch: DeepPartial<DesignerConfig['game']>) => onChange({ game: patch });
     const setApp = (patch: DeepPartial<DesignerConfig['app']>) => onChange({ app: patch });
     const setPreview = (patch: DeepPartial<DesignerConfig['preview']>) => onChange({ preview: patch });
-    const setViewport = (width: number, height: number, preset = 'custom') => {
-        onViewportChange(width, height, preset);
-    };
     const setCopyOverride = (key: 'fact' | 'category' | 'answer', value: string) => {
         onChange({ overrides: { [key]: value } as DeepPartial<DesignerConfig['overrides']> });
     };
@@ -212,7 +203,6 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     const setNameOverride = (index: number, value: string) => {
         onChange({ overrides: { names: { ...(config.overrides.names ?? {}), [index]: value } } });
     };
-    const viewportPreset = VIEWPORT_BY_PRESET[config.viewport.preset];
     const hasOverrides = Object.keys(config.overrides).length > 0;
 
     return (
@@ -561,39 +551,6 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     <LabNumber label="Failures" value={config.app.adminFailures} min={0} max={6} onChange={(adminFailures) => setApp({ adminFailures })} />
                 </LabSection>
             )}
-
-            <LabSection title="Viewport" subtitle="Real iframe size, not a scaled div" defaultOpen>
-                <LabSelect
-                    label="Preset"
-                    value={config.viewport.preset}
-                    groups={[
-                        ...VIEWPORT_GROUPS,
-                        { label: 'Custom', options: [{ value: 'custom', label: 'Custom size' }] },
-                    ]}
-                    onChange={(preset) => {
-                        if (preset === 'custom') {
-                            onViewportChange(config.viewport.width, config.viewport.height, 'custom');
-                            return;
-                        }
-                        const next = VIEWPORT_BY_PRESET[preset];
-                        if (next) onViewportChange(next.width, next.height, next.preset);
-                    }}
-                />
-                <div className="grid grid-cols-2 gap-2">
-                    <LabNumber label="Width" value={config.viewport.width} min={320} max={3840} onChange={(width) => setViewport(width, config.viewport.height)} />
-                    <LabNumber label="Height" value={config.viewport.height} min={320} max={2160} onChange={(height) => setViewport(config.viewport.width, height)} />
-                </div>
-                <LabButton onClick={onRotate} fullWidth>
-                    <RotateCw size={12} /> Rotate {viewportPreset ? `(${viewportPreset.label})` : ''}
-                </LabButton>
-                <LabButton onClick={onRandomize} fullWidth>
-                    <Dice5 size={12} /> Randomize state
-                </LabButton>
-                <div className="text-[9px] leading-relaxed text-slate-600">
-                    Live element edits persist when you switch viewport, so you can compare the same
-                    adjusted design at another size. Use Reset all to return to the natural responsive layout.
-                </div>
-            </LabSection>
 
             <LabSection title="Inspect" subtitle="Overflow, outlines and element details" defaultOpen={false}>
                 <div className="grid grid-cols-2 gap-2">

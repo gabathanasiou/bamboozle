@@ -431,10 +431,7 @@ export const DesignerView: React.FC = () => {
                         onScreenChange={changeScreen}
                         onViewChange={changeView}
                         onContentLengthChange={changeContentLength}
-                        onViewportChange={changeViewport}
-                        onRotate={rotate}
                         onReset={reset}
-                        onRandomize={randomize}
                         onCopyBrief={copyBrief}
                         onCopyJson={copyJson}
                         onApplyJson={applyJson}
@@ -474,6 +471,7 @@ export const DesignerView: React.FC = () => {
                         revealRequest={revealRequest}
                         onToggleInspect={() => update({ preview: { inspect: !config.preview.inspect } })}
                         onScan={scan}
+                        onRandomize={randomize}
                     />
                 </main>
             </div>
