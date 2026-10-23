@@ -1,12 +1,18 @@
 import type { Env } from './env';
-import { emptyRoomMs, playerKickMs, roomGraceMs } from './env';
+import { emptyRoomMs, maxAudiencePerRoom, maxPlayersPerRoom, maxStateBytes, playerKickMs, roomGraceMs } from './env';
 import {
   MAX_NAME_LENGTH,
   MAX_TTS_LENGTH,
+  hashSecret,
   isObject,
+  normalizeSecret,
   normalizeLanguage,
   normalizeRole,
+  randomSecret,
   sanitize,
+  stampPlayerEvent,
+  timingSafeEqual,
+  validatePlayerId,
   type Role,
 } from './protocol';
 import { getAudio } from './tts';
@@ -16,7 +22,6 @@ const DIRECTORY_NAME = 'directory';
 interface RoomInfo {
   exists: true;
   roomCode: string;
-  hostId: string;
   phase: string;
   playerCount: number;
   playerNames: string[];
@@ -37,6 +42,8 @@ interface PlayerRow {
   name: string;
   role: string;
   connected: number;
+  secret_hash: string;
+  socket_id: string;
 }
 
 /**
@@ -68,7 +75,9 @@ export class BambooRoom {
         name TEXT NOT NULL,
         role TEXT NOT NULL,
         connected INTEGER NOT NULL DEFAULT 0,
-        last_seen INTEGER NOT NULL
+        last_seen INTEGER NOT NULL,
+        secret_hash TEXT NOT NULL DEFAULT '',
+        socket_id TEXT NOT NULL DEFAULT ''
       );
 
       CREATE TABLE IF NOT EXISTS state (
@@ -83,6 +92,16 @@ export class BambooRoom {
         PRIMARY KEY (kind, key)
       );
     `);
+    for (const column of [
+      "secret_hash TEXT NOT NULL DEFAULT ''",
+      "socket_id TEXT NOT NULL DEFAULT ''",
+    ]) {
+      try {
+        this.ctx.storage.sql.exec(`ALTER TABLE players ADD COLUMN ${column}`);
+      } catch {
+        // Column already exists.
+      }
+    }
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -130,9 +149,15 @@ export class BambooRoom {
     if (this.meta('roomCode')) return json({ error: 'ROOM_EXISTS' }, 409);
 
     const roomCode = sanitize(body.roomCode, 4).toUpperCase();
-    const hostId = sanitize(body.hostId, 50);
+    const hostId = validatePlayerId(body.hostId);
     const hostSocketId = sanitize(body.hostSocketId, 128);
-    if (!/^[A-Z]{4}$/.test(roomCode) || !hostId || !hostSocketId) {
+    const hostSecretHash = sanitize(body.hostSecretHash, 64);
+    if (
+      !/^[A-Z]{4}$/.test(roomCode) ||
+      !hostId ||
+      !hostSocketId ||
+      !/^[a-f0-9]{64}$/.test(hostSecretHash)
+    ) {
       return json({ error: 'INVALID_INIT' }, 400);
     }
 
@@ -140,17 +165,19 @@ export class BambooRoom {
     this.metaSet('roomCode', roomCode);
     this.metaSet('hostId', hostId);
     this.metaSet('hostSocketId', hostSocketId);
+    this.metaSet('hostSecretHash', hostSecretHash);
     this.metaSet('pendingHostReconnect', '0');
     this.metaSet('hostGraceReason', '');
     this.metaSet('createdAt', String(now));
     this.metaSet('phase', 'LOBBY');
 
     this.ctx.storage.sql.exec(
-      'INSERT INTO players (id, name, role, connected, last_seen) VALUES (?, ?, ?, 1, ?)',
+      'INSERT INTO players (id, name, role, connected, last_seen, socket_id) VALUES (?, ?, ?, 1, ?, ?)',
       hostId,
       '',
       'HOST',
       now,
+      hostSocketId,
     );
 
     const initialState = {
@@ -183,7 +210,6 @@ export class BambooRoom {
     const info: RoomInfo = {
       exists: true,
       roomCode,
-      hostId: this.meta('hostId') || '',
       phase: typeof state?.phase === 'string' ? state.phase : this.meta('phase') || 'LOBBY',
       playerCount: players.length || fallbackPlayers.filter((player) => player.connected === 1).length,
       playerNames: playerNames.length
@@ -250,46 +276,123 @@ export class BambooRoom {
     const roomCode = this.meta('roomCode');
     if (!roomCode) return json({ error: 'ROOM_NOT_FOUND' }, 404);
 
-    const playerId = sanitize(body.playerId, 50);
+    const playerId = validatePlayerId(body.playerId);
     const socketId = sanitize(body.socketId, 128);
     const name = sanitize(body.name, MAX_NAME_LENGTH);
-    const role = normalizeRole(body.role);
+    const hostSecret = normalizeSecret(body.hostSecret);
+    const playerSecret = normalizeSecret(body.playerSecret);
     if (!playerId || !socketId) return json({ error: 'INVALID_JOIN' }, 400);
 
     const hostId = this.meta('hostId') || '';
     const pending = this.boolMeta('pendingHostReconnect');
     const hostSocketId = this.meta('hostSocketId') || '';
-    const becameHost = playerId === hostId && (pending || !hostSocketId);
+    const isHostIdentity = playerId === hostId;
+    let becameHost = false;
 
-    if (becameHost) {
+    if (isHostIdentity) {
+      // The host id is public only in old builds; the server-issued secret is
+      // the credential. Never fall back to accepting the id on its own.
+      const storedHash = this.meta('hostSecretHash') || '';
+      const suppliedHash = hostSecret ? await hashSecret(hostSecret) : '';
+      if (!storedHash || !suppliedHash || !timingSafeEqual(suppliedHash, storedHash)) {
+        return json({ error: 'HOST_SECRET_REQUIRED' }, 403);
+      }
+      becameHost = true;
       this.metaSet('hostSocketId', socketId);
       this.metaSet('pendingHostReconnect', '0');
       this.metaSet('hostGraceReason', '');
       await this.clearDeadline('host_grace', 'room');
       await this.broadcast('hostReconnected', undefined, { excludeSocketId: socketId });
+      if (hostSocketId && hostSocketId !== socketId) {
+        // A reconnect race or a deliberate second tab with the same secret:
+        // the newest socket wins and the old one loses host authority.
+        await this.directory('/internal/demote', { socketId: hostSocketId });
+      }
+    }
+
+    const requestedRole = normalizeRole(body.role);
+    const role: Role = isHostIdentity
+      ? 'HOST'
+      : requestedRole === 'AUDIENCE'
+        ? 'AUDIENCE'
+        : 'PLAYER';
+
+    const existing = this.ctx.storage.sql
+      .exec<PlayerRow>(
+        'SELECT id, name, role, connected, secret_hash, socket_id FROM players WHERE id = ?',
+        playerId,
+      )
+      .toArray()[0];
+
+    let issuedPlayerSecret: string | undefined;
+    let playerSecretHash = existing?.secret_hash || '';
+    if (!isHostIdentity) {
+      if (existing?.secret_hash) {
+        const suppliedHash = playerSecret ? await hashSecret(playerSecret) : '';
+        if (!suppliedHash || !timingSafeEqual(suppliedHash, existing.secret_hash)) {
+          return json({ error: 'PLAYER_SECRET_REQUIRED' }, 403);
+        }
+        playerSecretHash = existing.secret_hash;
+      } else {
+        // First join (or a legacy row): mint the resume credential once.
+        issuedPlayerSecret = randomSecret();
+        playerSecretHash = await hashSecret(issuedPlayerSecret);
+      }
+    }
+    const replacedSocketId =
+      existing?.socket_id && existing.socket_id !== socketId ? existing.socket_id : '';
+
+    if (!existing || existing.role !== role) {
+      if (role === 'AUDIENCE') {
+        const audienceCount =
+          this.ctx.storage.sql
+            .exec<{ count: number }>("SELECT COUNT(*) AS count FROM players WHERE role = 'AUDIENCE'")
+            .toArray()[0]?.count ?? 0;
+        if (audienceCount >= maxAudiencePerRoom(this.env)) {
+          return json({ error: 'ROOM_FULL' }, 409);
+        }
+      } else {
+        const playerCount =
+          this.ctx.storage.sql
+            .exec<{ count: number }>("SELECT COUNT(*) AS count FROM players WHERE role <> 'AUDIENCE'")
+            .toArray()[0]?.count ?? 0;
+        if (playerCount >= maxPlayersPerRoom(this.env) + 1) {
+          return json({ error: 'ROOM_FULL' }, 409);
+        }
+      }
     }
 
     const now = Date.now();
     this.ctx.storage.sql.exec(
-      `INSERT INTO players (id, name, role, connected, last_seen)
-       VALUES (?, ?, ?, 1, ?)
+      `INSERT INTO players (id, name, role, connected, last_seen, secret_hash, socket_id)
+       VALUES (?, ?, ?, 1, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          name = CASE WHEN excluded.name <> '' THEN excluded.name ELSE players.name END,
-         role = CASE WHEN excluded.role <> '' THEN excluded.role ELSE players.role END,
+         role = excluded.role,
          connected = 1,
-         last_seen = excluded.last_seen`,
+         last_seen = excluded.last_seen,
+         secret_hash = excluded.secret_hash,
+         socket_id = excluded.socket_id`,
       playerId,
       name,
       role,
       now,
+      playerSecretHash,
+      socketId,
     );
+    if (replacedSocketId) {
+      // The newest socket wins. The old socket's events are rejected by the
+      // socket_id check; close it so it cannot linger.
+      await this.directory('/internal/close-socket', { socketId: replacedSocketId });
+    }
     await this.clearDeadline('player_kick', playerId);
     await this.touchDirectory({ pendingHostReconnect: becameHost ? false : pending });
 
     return json({
       success: true,
-      state: this.readState(),
+      state: this.publicState(this.readState()),
       becameHost,
+      playerSecret: issuedPlayerSecret,
     });
   }
 
@@ -305,8 +408,20 @@ export class BambooRoom {
       await this.applyHostGrace('HOST_TIMEOUT');
       return json({ ok: true, host: true });
     }
+    if (playerId && playerId === (this.meta('hostId') || '')) {
+      // A demoted old host socket closing must not start a player kick for the
+      // host row; host grace/close is handled by the host path above.
+      return json({ ok: true, host: true });
+    }
 
     if (playerId) {
+      const row = this.ctx.storage.sql
+        .exec<{ socket_id: string }>('SELECT socket_id FROM players WHERE id = ?', playerId)
+        .toArray()[0];
+      if (row?.socket_id && row.socket_id !== socketId) {
+        // A replaced/old socket closing must not disconnect the live player.
+        return json({ ok: true, ignored: true });
+      }
       this.ctx.storage.sql.exec('UPDATE players SET connected = 0, last_seen = ? WHERE id = ?', Date.now(), playerId);
       await this.setDeadline('player_kick', playerId, Date.now() + playerKickMs(this.env));
       await this.broadcast('playerDisconnected', { playerId });
@@ -325,9 +440,14 @@ export class BambooRoom {
     const gameState = body.gameState;
     if (!isObject(gameState)) return json({ error: 'INVALID_STATE' }, 400);
 
-    this.latestState = gameState;
-    this.persistState(gameState, false);
-    await this.broadcast('gameStateUpdate', gameState, {
+    const publicState = this.publicState(gameState)!;
+    const serialized = JSON.stringify(publicState);
+    if (new TextEncoder().encode(serialized).byteLength > maxStateBytes(this.env)) {
+      return json({ error: 'STATE_TOO_LARGE' }, 413);
+    }
+    this.latestState = publicState;
+    this.persistState(publicState, false);
+    await this.broadcast('gameStateUpdate', publicState, {
       excludeSocketId: sanitize(body.socketId, 128),
     });
     return json({ ok: true });
@@ -342,7 +462,62 @@ export class BambooRoom {
   }
 
   private async playerEvent(body: Record<string, unknown>): Promise<Response> {
-    await this.broadcast('playerEvent', body.event, {
+    const senderId = validatePlayerId(body.senderId ?? body.playerId);
+    const socketId = sanitize(body.socketId, 128);
+    if (!senderId) return json({ error: 'PLAYER_EVENT_FORBIDDEN' }, 403);
+
+    const sender = this.ctx.storage.sql
+      .exec<PlayerRow>(
+        'SELECT id, name, role, connected, secret_hash, socket_id FROM players WHERE id = ?',
+        senderId,
+      )
+      .toArray()[0];
+    if (!sender || sender.connected !== 1) return json({ error: 'PLAYER_EVENT_FORBIDDEN' }, 403);
+    if (sender.socket_id && sender.socket_id !== socketId) {
+      return json({ error: 'PLAYER_EVENT_FORBIDDEN' }, 403);
+    }
+
+    const event = stampPlayerEvent(body.event, senderId);
+    if (!event) return json({ error: 'PLAYER_EVENT_FORBIDDEN' }, 403);
+
+    const eventType = (event as { type: string }).type;
+    if (eventType === 'SUBMIT_AUDIENCE_VOTE' && sender.role !== 'AUDIENCE') {
+      return json({ error: 'PLAYER_EVENT_FORBIDDEN' }, 403);
+    }
+    if (
+      sender.role === 'AUDIENCE' &&
+      (eventType === 'SUBMIT_LIE' || eventType === 'SUBMIT_VOTE' || eventType === 'TOGGLE_READY')
+    ) {
+      return json({ error: 'PLAYER_EVENT_FORBIDDEN' }, 403);
+    }
+
+    if (eventType === 'JOIN_ROOM' || eventType === 'JOIN_AUDIENCE') {
+      if (eventType === 'JOIN_ROOM' && sender.role === 'AUDIENCE') {
+        const playerCount =
+          this.ctx.storage.sql
+            .exec<{ count: number }>("SELECT COUNT(*) AS count FROM players WHERE role <> 'AUDIENCE'")
+            .toArray()[0]?.count ?? 0;
+        if (playerCount >= maxPlayersPerRoom(this.env) + 1) {
+          return json({ error: 'ROOM_FULL' }, 409);
+        }
+      }
+      if (eventType === 'JOIN_AUDIENCE' && sender.role !== 'AUDIENCE') {
+        const audienceCount =
+          this.ctx.storage.sql
+            .exec<{ count: number }>("SELECT COUNT(*) AS count FROM players WHERE role = 'AUDIENCE'")
+            .toArray()[0]?.count ?? 0;
+        if (audienceCount >= maxAudiencePerRoom(this.env)) {
+          return json({ error: 'ROOM_FULL' }, 409);
+        }
+      }
+      this.ctx.storage.sql.exec(
+        'UPDATE players SET role = ? WHERE id = ?',
+        eventType === 'JOIN_AUDIENCE' ? 'AUDIENCE' : 'PLAYER',
+        senderId,
+      );
+    }
+
+    await this.broadcast('playerEvent', event, {
       excludeSocketId: sanitize(body.socketId, 128),
     });
     return json({ ok: true });
@@ -355,10 +530,17 @@ export class BambooRoom {
     const language = normalizeLanguage(body.language);
     const requestId = sanitize(body.requestId, 128);
     const socketId = sanitize(body.socketId, 128);
+    const clientIp = sanitize(body.clientIp, 64) || 'unknown';
     if (!text) return json({ error: 'TEXT_REQUIRED' }, 400);
 
     try {
-      const result = await getAudio(this.env, text, language, roomCode);
+      const result = await getAudio(this.env, text, language, roomCode, async () => {
+        const response = await this.directory('/internal/tts-budget', {
+          ip: clientIp,
+          chars: text.length,
+        });
+        if (!response.ok) throw new Error('TTS_BUDGET_EXCEEDED');
+      });
       const state = this.readState();
       const isOnlineMode = state?.isOnlineMode === true;
       const payload = {
@@ -371,6 +553,10 @@ export class BambooRoom {
       await this.broadcast('playAudio', payload, isOnlineMode ? {} : { onlySocketId: socketId });
       return json({ ok: true, isHit: result.isHit });
     } catch (error) {
+      if (error instanceof Error && error.message === 'TTS_BUDGET_EXCEEDED') {
+        console.warn(`[Room] TTS budget exceeded room=${roomCode}`);
+        return json({ error: 'TTS_BUDGET_EXCEEDED' }, 429);
+      }
       console.error('[Room] narrator failed', error);
       return json({ error: 'TTS_FAILED' }, 500);
     }
@@ -475,10 +661,20 @@ export class BambooRoom {
     if (!row) return null;
     try {
       const parsed = JSON.parse(row.json);
-      return isObject(parsed) ? parsed : null;
+      return isObject(parsed) ? this.publicState(parsed) : null;
     } catch {
       return null;
     }
+  }
+
+  /**
+   * hostId is not an auth credential and must never leave the server in room
+   * state (broadcast, join response or requestState).
+   */
+  private publicState(state: Record<string, unknown> | null): Record<string, unknown> | null {
+    if (!state) return null;
+    const { hostId: _hostId, ...rest } = state;
+    return rest;
   }
 
   private writeState(state: Record<string, unknown>): void {
@@ -574,7 +770,7 @@ export class BambooRoom {
 
   private playerRows(): PlayerRow[] {
     return this.ctx.storage.sql
-      .exec<PlayerRow>('SELECT id, name, role, connected FROM players ORDER BY last_seen ASC')
+      .exec<PlayerRow>('SELECT id, name, role, connected, secret_hash, socket_id FROM players ORDER BY last_seen ASC')
       .toArray();
   }
 }

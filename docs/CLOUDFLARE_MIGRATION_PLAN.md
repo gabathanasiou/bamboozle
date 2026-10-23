@@ -23,7 +23,7 @@ Netlify (static React) / Capacitor Android
 Cloudflare Worker  "bamboozle-rooms"        ← NEW, separate from lemon-rooms
   ├── GET  /health
   ├── GET  /api/version
-  ├── POST /api/tts                         ← Google TTS → GCS (existing bucket)
+  ├── POST /api/tts (ops-only; 404 unless TTS_API_TOKEN is set) ← Google TTS → GCS (existing bucket)
   └── GET  /ws                              ← upgrades to the room DO
           │
           ├── BambooRoom DO   (one per room)  state, players, relay, alarms
@@ -39,7 +39,7 @@ workers/bamboozle-rooms/
   wrangler.toml
   package.json
   tsconfig.json
-  src/index.ts          Worker router + CORS + /api/tts
+  src/index.ts          Worker router + CORS + ops-only /api/tts (token-gated)
   src/room.ts           BambooRoom DO
   src/directory.ts      Directory DO
   src/tts.ts            Google TTS + GCS REST client
@@ -82,12 +82,12 @@ One JSON envelope, event names unchanged from `docs/NETWORKING.md`:
 |---|---|---|---|
 | `checkRoom` | C→S | yes | Directory lookup |
 | `getRoomsByHost` | C→S | yes | Directory lookup |
-| `createRoom` | C→S | yes | optional `token` (ignored in phase 1) |
-| `joinRoom` | C→S | yes | returns `{success, state, becameHost}` |
-| `requestState` | C→S | yes | returns `GameState \| null` |
-| `gameStateUpdate` | C→S | no | host → room broadcast (exclude sender) |
+| `createRoom` | C→S | yes | `{ hostId, hostSecret?, token? }` → `{ roomCode, hostSecret }`; `token` ignored in phase 1 |
+| `joinRoom` | C→S | yes | returns `{success, state, becameHost}`; `hostSecret` required to reclaim |
+| `requestState` | C→S | yes | returns `GameState \| null`; membership required |
+| `gameStateUpdate` | C→S | no | host → room broadcast (exclude sender); `hostId` stripped |
 | `hostEvent` | C→S | no | relay to room |
-| `playerEvent` | C→S | no | sanitize `payload.text`/`payload.name`, relay |
+| `playerEvent` | C→S | no | allowlisted player actions; sender id stamped from the socket |
 | `requestNarrator` | C→S | no | TTS; reply `playAudio` |
 | `roomClosed` | S→C | — | broadcast |
 | `hostDisconnected` / `hostReconnected` | S→C | — | broadcast |
@@ -155,6 +155,7 @@ One global object (name `"directory"`) so room-code allocation is serialized.
 CREATE TABLE IF NOT EXISTS rooms (
   code TEXT PRIMARY KEY,
   host_id TEXT NOT NULL,
+  host_secret_hash TEXT NOT NULL DEFAULT '',
   created_at INTEGER NOT NULL,
   phase TEXT NOT NULL DEFAULT 'LOBBY',
   player_count INTEGER NOT NULL DEFAULT 0,
@@ -166,7 +167,8 @@ CREATE INDEX IF NOT EXISTS rooms_by_created ON rooms(created_at);
 
 - `checkRoom` → `SELECT 1 FROM rooms WHERE code = ?`
 - `getRoomsByHost` → rows for host, mapped to the current response shape
-- `createRoom` → generate code, insert, enforce the 2/3-room caps, return code
+- `createRoom` → generate code, insert, enforce the host secret and the 2/3-room caps,
+  return `{ roomCode, hostSecret }`
 - `joinRoom` / `gameStateUpdate` / close → best-effort `phase`/`player_count` update
 - Sweep stale rooms older than 6h on create (free, avoids a cron)
 

@@ -50,7 +50,7 @@ Netlify / Capacitor ── wss ──► Worker bamboozle-rooms
 ### 2. Networking (`workers/bamboozle-rooms/` + `services/realtimeClient.ts`)
 - Rooms use 4-letter A–Z codes.
 - One JSON envelope per frame; event names/payloads are in `docs/NETWORKING.md`.
-- `Directory` enforces the 2-concurrent-room cap, 20 events/10s limit and room lookup.
+- `Directory` enforces the host-secret check, 2-concurrent-room cap, per-socket/per-IP read limits and room lookup.
 - `BambooRoom` owns relay state, host/player grace and alarms.
 - Details and the operational rules live in `docs/SERVER_HARDENING.md`.
 

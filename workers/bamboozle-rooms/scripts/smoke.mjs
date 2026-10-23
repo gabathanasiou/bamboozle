@@ -129,15 +129,22 @@ async function main() {
 
   const hostId = `smoke-host-${Date.now()}`;
   let roomCode;
+  let hostSecret;
+  let playerSecret;
   let host = await Client.connect();
   let player = await Client.connect();
   let audience = await Client.connect();
 
   await step('createRoom + checkRoom', async () => {
-    roomCode = await host.ack('createRoom', { hostId });
+    const created = await host.ack('createRoom', { hostId });
+    roomCode = created.roomCode;
+    hostSecret = created.hostSecret;
     assert(/^[A-Z]{4}$/.test(roomCode), `room code: ${roomCode}`);
+    assert(/^[a-f0-9]{32}$/.test(hostSecret || ''), 'server-issued host secret');
     const check = await player.ack('checkRoom', { roomCode });
     assert(check.exists === true, 'checkRoom exists');
+    const again = await host.ack('createRoom', { hostId });
+    assert(again?.error === 'ALREADY_IN_ROOM', `second create on one socket: ${JSON.stringify(again)}`);
   });
 
   await step('joinRoom PLAYER + AUDIENCE with identical state', async () => {
@@ -154,8 +161,21 @@ async function main() {
       name: 'Smoke Audience',
     });
     assert(playerResult.success === true, 'player join');
+    playerSecret = playerResult.playerSecret;
+    assert(/^[a-f0-9]{32}$/.test(playerSecret || ''), 'player resume secret');
     assert(audienceResult.success === true, 'audience join');
     assert(same(playerResult.state, audienceResult.state), 'join states identical');
+  });
+
+  await step('requestState requires room membership', async () => {
+    const outsider = await Client.connect();
+    const denied = await outsider.ack('requestState', { roomCode });
+    assert(denied === null, 'outsider read rejected');
+    const member = await host.ack('requestState', { roomCode });
+    assert(member && member.roomCode === roomCode, 'joined host can read its room');
+    const other = await host.ack('requestState', { roomCode: 'ZZZZ' });
+    assert(other === null, 'cannot read a different room');
+    outsider.close();
   });
 
   await step('gameStateUpdate relay (exclude sender)', async () => {
@@ -187,17 +207,76 @@ async function main() {
     assert(received.playerId === 'smoke-player', 'playerDisconnected payload');
   });
 
+  await step('player identity requires the resume secret', async () => {
+    const attacker = await Client.connect();
+    const denied = await attacker.ack('joinRoom', {
+      roomCode,
+      id: 'smoke-player',
+      role: 'PLAYER',
+    });
+    assert(
+      denied?.error === 'PLAYER_SECRET_REQUIRED',
+      `expected PLAYER_SECRET_REQUIRED, got ${JSON.stringify(denied)}`,
+    );
+    attacker.close();
+
+    const resumed = await Client.connect();
+    const result = await resumed.ack('joinRoom', {
+      roomCode,
+      id: 'smoke-player',
+      role: 'PLAYER',
+      playerSecret,
+    });
+    assert(result.success === true, `player resumed: ${JSON.stringify(result)}`);
+    resumed.close();
+  });
+
+  await step('server-side player cap', async () => {
+    const extraSockets = [];
+    for (let i = 0; i < 5; i++) {
+      const extra = await Client.connect();
+      const result = await extra.ack('joinRoom', {
+        roomCode,
+        id: `smoke-extra-${i}`,
+        role: 'PLAYER',
+      });
+      assert(result.success === true, `extra player ${i} joined`);
+      extraSockets.push(extra);
+    }
+    const fullSocket = await Client.connect();
+    const full = await fullSocket.ack('joinRoom', {
+      roomCode,
+      id: 'smoke-extra-full',
+      role: 'PLAYER',
+    });
+    assert(full?.error === 'ROOM_FULL', `expected ROOM_FULL, got ${JSON.stringify(full)}`);
+    fullSocket.close();
+    extraSockets.forEach((socket) => socket.close());
+  });
+
   await step('host reconnect grace + reclaim', async () => {
     host.close();
     const disconnected = await audience.wait('hostDisconnected');
     assert(disconnected === undefined, 'hostDisconnected has no payload');
 
     const newHost = await Client.connect();
-    const result = await newHost.ack('joinRoom', { roomCode, id: hostId, role: 'HOST' });
+    const result = await newHost.ack('joinRoom', {
+      roomCode,
+      id: hostId,
+      role: 'HOST',
+      hostSecret,
+    });
     assert(result.success === true && result.becameHost === true, 'host reclaimed');
     const reconnected = await audience.wait('hostReconnected');
     assert(reconnected === undefined, 'hostReconnected has no payload');
     host = newHost;
+  });
+
+  await step('hostId alone cannot reclaim', async () => {
+    const attacker = await Client.connect();
+    const result = await attacker.ack('joinRoom', { roomCode, id: hostId, role: 'HOST' });
+    assert(result?.error === 'HOST_SECRET_REQUIRED', `expected HOST_SECRET_REQUIRED, got ${JSON.stringify(result)}`);
+    attacker.close();
   });
 
   await step('rate limit >20 events / 10s', async () => {
@@ -220,19 +299,48 @@ async function main() {
     const capHost = `smoke-cap-${Date.now()}`;
     const sockets = [await Client.connect(), await Client.connect(), await Client.connect()];
     const first = await sockets[0].ack('createRoom', { hostId: capHost });
-    const second = await sockets[1].ack('createRoom', { hostId: capHost });
-    const third = await sockets[2].ack('createRoom', { hostId: capHost });
-    assert(new Set([first, second, third]).size === 3, 'three unique rooms');
+    const missing = await sockets[1].ack('createRoom', { hostId: capHost });
+    assert(
+      missing?.error === 'HOST_SECRET_REQUIRED',
+      `expected HOST_SECRET_REQUIRED, got ${JSON.stringify(missing)}`,
+    );
+    const second = await sockets[1].ack('createRoom', {
+      hostId: capHost,
+      hostSecret: first.hostSecret,
+    });
+    const third = await sockets[2].ack('createRoom', {
+      hostId: capHost,
+      hostSecret: first.hostSecret,
+    });
+    assert(new Set([first.roomCode, second.roomCode, third.roomCode]).size === 3, 'three unique rooms');
 
-    let rooms = await sockets[0].ack('getRoomsByHost', { hostId: capHost });
-    const graced = rooms.find((room) => room.roomCode === first);
+    let rooms = await sockets[0].ack('getRoomsByHost', {
+      hostId: capHost,
+      hostSecret: first.hostSecret,
+    });
+    assert(Array.isArray(rooms) && rooms.length === 3, 'host secret lists all rooms');
+    const graced = rooms.find((room) => room.roomCode === first.roomCode);
     assert(graced?.isGracePeriod === true, 'oldest is in grace');
 
+    const hidden = await sockets[0].ack('getRoomsByHost', { hostId: capHost });
+    assert(Array.isArray(hidden) && hidden.length === 0, 'room list requires the host secret');
+    const squatted = await sockets[0].ack('getRoomsByHost', {
+      hostId: capHost,
+      hostSecret: 'f'.repeat(32),
+    });
+    assert(Array.isArray(squatted) && squatted.length === 0, 'wrong host secret lists nothing');
+
     const fourthSocket = await Client.connect();
-    const fourth = await fourthSocket.ack('createRoom', { hostId: capHost });
-    rooms = await fourthSocket.ack('getRoomsByHost', { hostId: capHost });
-    assert(!rooms.some((room) => room.roomCode === first), 'oldest closed');
-    assert(rooms.some((room) => room.roomCode === fourth), '4th room exists');
+    const fourth = await fourthSocket.ack('createRoom', {
+      hostId: capHost,
+      hostSecret: first.hostSecret,
+    });
+    rooms = await fourthSocket.ack('getRoomsByHost', {
+      hostId: capHost,
+      hostSecret: first.hostSecret,
+    });
+    assert(!rooms.some((room) => room.roomCode === first.roomCode), 'oldest closed');
+    assert(rooms.some((room) => room.roomCode === fourth.roomCode), '4th room exists');
     sockets.forEach((socket) => socket.close());
     fourthSocket.close();
   });
@@ -246,6 +354,18 @@ async function main() {
     const response = await fetch(audio.audioUrl, { method: 'HEAD' });
     assert(response.ok, `audio URL ${response.status}`);
     console.log(`       ${audio.audioUrl}`);
+  });
+
+  await step('anonymous /api/tts is disabled or unauthorized', async () => {
+    const response = await fetch(`${BASE}/api/tts`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text: 'smoke tts api' }),
+    });
+    assert(
+      response.status === 404 || response.status === 401,
+      `expected 404/401, got ${response.status}`,
+    );
   });
 
   if (process.env.SMOKE_NEW_TTS === '1') {

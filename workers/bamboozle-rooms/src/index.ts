@@ -1,6 +1,6 @@
 import type { Env } from './env';
 import { corsHeaders, isOriginAllowed } from './origin';
-import { sanitize } from './protocol';
+import { sanitize, timingSafeEqual } from './protocol';
 import { getAudio } from './tts';
 
 export { BambooRoom } from './room';
@@ -67,6 +67,16 @@ async function websocket(request: Request, env: Env, origin: string | null): Pro
 }
 
 async function tts(request: Request, env: Env): Promise<Response> {
+  const token = (env.TTS_API_TOKEN || '').trim();
+  // Ops-only fallback. With no secret configured the route does not exist.
+  if (!token) return json({ error: 'NOT_FOUND' }, 404);
+
+  const authorization = request.headers.get('authorization') || '';
+  const supplied = authorization.replace(/^Bearer\s+/i, '').trim();
+  if (!supplied || !timingSafeEqual(supplied, token)) {
+    return json({ error: 'UNAUTHORIZED' }, 401);
+  }
+
   const length = Number(request.headers.get('content-length') || 0);
   if (length > MAX_TTS_BODY_BYTES) return json({ error: 'BODY_TOO_LARGE' }, 413);
 
@@ -86,12 +96,29 @@ async function tts(request: Request, env: Env): Promise<Response> {
   const roomCode = sanitize(body.roomCode, 8) || 'api';
 
   try {
-    const result = await getAudio(env, text, language, roomCode);
+    const result = await getAudio(env, text, language, roomCode, async () => {
+      await consumeTtsBudget(request, env, text.length);
+    });
     return json({ url: result.url, isHit: result.isHit });
   } catch (error) {
+    if (error instanceof Error && error.message === 'TTS_BUDGET_EXCEEDED') {
+      return json({ error: 'TTS_BUDGET_EXCEEDED' }, 429);
+    }
     console.error('[Worker] /api/tts failed', error);
     return json({ error: error instanceof Error ? error.message : 'TTS_FAILED' }, 500);
   }
+}
+
+async function consumeTtsBudget(request: Request, env: Env, chars: number): Promise<void> {
+  const ip = request.headers.get('cf-connecting-ip') || 'unknown';
+  const id = env.DIRECTORY.idFromName('directory');
+  const stub = env.DIRECTORY.get(id);
+  const response = await stub.fetch('https://directory/internal/tts-budget', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ ip, chars }),
+  });
+  if (!response.ok) throw new Error('TTS_BUDGET_EXCEEDED');
 }
 
 function withCors(response: Response, origin: string | null): Response {

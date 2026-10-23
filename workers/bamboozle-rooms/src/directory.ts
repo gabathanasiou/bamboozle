@@ -1,25 +1,46 @@
 import type { Env } from './env';
+import {
+  maxSocketsPerIp,
+  maxSocketsTotal,
+  maxTotalRooms,
+  maxUpgradesPerMinute,
+  ttsDailyChars,
+  ttsIpDailyChars,
+} from './env';
 import { authorizeHost } from './auth';
 import {
   MAX_CONCURRENT_ROOMS_PER_HOST,
+  MAX_FRAME_BYTES,
+  EVENT_RATE_WINDOW,
   RATE_LIMITED_EVENTS,
+  READ_EVENTS,
   consumeRate,
+  hashSecret,
+  isPlayerEventType,
   normalizeHostId,
+  normalizeSecret,
   normalizeRoomCode,
   normalizeRole,
   parseClientMessage,
+  randomSecret,
   sanitize,
-  sanitizePlayerEvent,
+  timingSafeEqual,
+  validatePlayerId,
+  type RateState,
   type ServerAck,
   type SocketAttachment,
 } from './protocol';
 
 const SIX_HOURS = 6 * 60 * 60 * 1000;
+const CREATE_WINDOW = 60 * 60 * 1000;
+const MAX_CREATES_PER_WINDOW = 10;
+const MAX_READS_PER_IP_WINDOW = 60;
 
 interface RoomRow {
   [key: string]: string | number | null;
   code: string;
   host_id: string;
+  host_secret_hash: string;
   created_at: number;
   phase: string;
   player_count: number;
@@ -29,7 +50,6 @@ interface RoomRow {
 interface RoomInfo {
   exists: true;
   roomCode: string;
-  hostId: string;
   phase: string;
   playerCount: number;
   playerNames: string[];
@@ -58,6 +78,9 @@ interface RoomSummary {
 export class Directory {
   private readonly ctx: DurableObjectState;
   private readonly env: Env;
+  private ipRates = new Map<string, RateState>();
+  private createRates = new Map<string, RateState>();
+  private upgradeRates = new Map<string, RateState>();
 
   constructor(ctx: DurableObjectState, env: Env) {
     this.ctx = ctx;
@@ -70,6 +93,7 @@ export class Directory {
       CREATE TABLE IF NOT EXISTS rooms (
         code TEXT PRIMARY KEY,
         host_id TEXT NOT NULL,
+        host_secret_hash TEXT NOT NULL DEFAULT '',
         created_at INTEGER NOT NULL,
         phase TEXT NOT NULL DEFAULT 'LOBBY',
         player_count INTEGER NOT NULL DEFAULT 0,
@@ -77,17 +101,34 @@ export class Directory {
       );
       CREATE INDEX IF NOT EXISTS rooms_by_host ON rooms(host_id);
       CREATE INDEX IF NOT EXISTS rooms_by_created ON rooms(created_at);
+
+      CREATE TABLE IF NOT EXISTS tts_budget (
+        key TEXT PRIMARY KEY,
+        day TEXT NOT NULL,
+        count INTEGER NOT NULL DEFAULT 0
+      );
     `);
+    // Existing deployments predate the host-secret column.
+    try {
+      this.ctx.storage.sql.exec("ALTER TABLE rooms ADD COLUMN host_secret_hash TEXT NOT NULL DEFAULT ''");
+    } catch {
+      // Column already exists.
+    }
   }
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     try {
-      if (url.pathname === '/ws') return this.handleWebSocket(request);
+      if (url.pathname === '/ws') {
+        void this.scheduleSweep();
+        return this.handleWebSocket(request);
+      }
       if (url.pathname === '/internal/broadcast') return await this.internalBroadcast(request);
       if (url.pathname === '/internal/room-closed') return await this.internalRoomClosed(request);
       if (url.pathname === '/internal/room-meta') return await this.internalRoomMeta(request);
       if (url.pathname === '/internal/demote') return await this.internalDemote(request);
+      if (url.pathname === '/internal/close-socket') return await this.internalCloseSocket(request);
+      if (url.pathname === '/internal/tts-budget') return await this.internalTtsBudget(request);
       return json({ error: 'NOT_FOUND' }, 404);
     } catch (error) {
       console.error('[Directory] internal error', error);
@@ -104,6 +145,43 @@ export class Directory {
       return new Response('Expected WebSocket upgrade', { status: 426 });
     }
 
+    const clientIp = (request.headers.get('cf-connecting-ip') ||
+      request.headers.get('x-real-ip') ||
+      request.headers.get('x-forwarded-for') ||
+      '')
+      .split(',')[0]
+      .trim()
+      .slice(0, 64);
+
+    const sockets = this.ctx.getWebSockets();
+    if (sockets.length >= maxSocketsTotal(this.env)) {
+      return new Response('Too many connections', { status: 429 });
+    }
+    if (clientIp) {
+      const now = Date.now();
+      const upgrade = consumeRate(
+        this.upgradeRates.get(clientIp) ?? { count: 0, windowStart: now },
+        now,
+        maxUpgradesPerMinute(this.env),
+        60_000,
+      );
+      this.upgradeRates.set(clientIp, upgrade.next);
+      if (this.upgradeRates.size > 5000) {
+        const cutoff = now - 10 * 60 * 1000;
+        for (const [key, state] of this.upgradeRates) {
+          if (state.windowStart < cutoff) this.upgradeRates.delete(key);
+        }
+      }
+      if (upgrade.limited) {
+        return new Response('Too many connection attempts', { status: 429 });
+      }
+
+      const fromIp = sockets.filter((socket) => this.attachment(socket)?.clientIp === clientIp).length;
+      if (fromIp >= maxSocketsPerIp(this.env)) {
+        return new Response('Too many connections from this address', { status: 429 });
+      }
+    }
+
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
     this.ctx.acceptWebSocket(server);
@@ -114,6 +192,7 @@ export class Directory {
       role: null,
       isHost: false,
       rate: { count: 0, windowStart: Date.now() },
+      clientIp,
     };
     server.serializeAttachment(attachment);
     return new Response(null, { status: 101, webSocket: client });
@@ -137,12 +216,34 @@ export class Directory {
     }
 
     if (RATE_LIMITED_EVENTS.has(clientMessage.event)) {
-      const rate = consumeRate(attachment.rate, Date.now());
+      const now = Date.now();
+      const rate = consumeRate(attachment.rate, now);
       attachment.rate = rate.next;
       ws.serializeAttachment(attachment);
       if (rate.limited) {
         if (clientMessage.id) this.sendAck(ws, clientMessage.id, false, 'RATE_LIMITED');
         return;
+      }
+
+      if (READ_EVENTS.has(clientMessage.event) && attachment.clientIp) {
+        const ipKey = attachment.clientIp;
+        const ipRate = consumeRate(
+          this.ipRates.get(ipKey) ?? { count: 0, windowStart: now },
+          now,
+          MAX_READS_PER_IP_WINDOW,
+          EVENT_RATE_WINDOW,
+        );
+        this.ipRates.set(ipKey, ipRate.next);
+        if (this.ipRates.size > 5000) {
+          const cutoff = now - 10 * 60 * 1000;
+          for (const [key, state] of this.ipRates) {
+            if (state.windowStart < cutoff) this.ipRates.delete(key);
+          }
+        }
+        if (ipRate.limited) {
+          if (clientMessage.id) this.sendAck(ws, clientMessage.id, false, 'RATE_LIMITED');
+          return;
+        }
       }
     }
 
@@ -173,11 +274,17 @@ export class Directory {
 
       case 'getRoomsByHost': {
         const hostId = normalizeHostId(data.hostId);
-        ack(hostId ? await this.roomsByHost(hostId) : []);
+        ack(hostId ? await this.roomsByHost(hostId, data.hostSecret) : []);
         return;
       }
 
       case 'createRoom': {
+        if (attachment.roomCode) {
+          // One socket owns one room. This also stops a client from leaving a
+          // trail of zombie rooms by creating repeatedly on the same socket.
+          ack({ error: 'ALREADY_IN_ROOM' });
+          return;
+        }
         const hostId = normalizeHostId(data.hostId);
         if (!hostId) {
           ack({ error: 'INVALID_HOST_ID' });
@@ -192,14 +299,36 @@ export class Directory {
           ack({ error: auth.reason || 'ENTITLEMENT_REQUIRED' });
           return;
         }
+        if (!this.consumeCreate(attachment.clientIp || 'unknown')) {
+          ack({ error: 'RATE_LIMITED' });
+          return;
+        }
 
-        const roomCode = await this.createRoomForHost(hostId, attachment.socketId);
-        attachment.roomCode = roomCode;
-        attachment.playerId = hostId;
-        attachment.role = 'HOST';
-        attachment.isHost = true;
-        ws.serializeAttachment(attachment);
-        ack(roomCode);
+        try {
+          const created = await this.createRoomForHost(
+            hostId,
+            attachment.socketId,
+            typeof data.hostSecret === 'string' ? data.hostSecret : undefined,
+          );
+          attachment.roomCode = created.roomCode;
+          attachment.playerId = hostId;
+          attachment.role = 'HOST';
+          attachment.isHost = true;
+          ws.serializeAttachment(attachment);
+          ack(created);
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : 'ROOM_CREATE_FAILED';
+          if (
+            reason === 'ROOM_LIMIT' ||
+            reason === 'ROOM_LIMIT_GLOBAL' ||
+            reason === 'INVALID_HOST_ID' ||
+            reason === 'HOST_SECRET_REQUIRED'
+          ) {
+            ack({ error: reason });
+          } else {
+            throw error;
+          }
+        }
         return;
       }
 
@@ -214,9 +343,15 @@ export class Directory {
           return;
         }
 
-        const playerId = sanitize(data.id, 50);
+        const playerId = validatePlayerId(data.id);
         if (!playerId) {
           ack({ error: 'INVALID_PLAYER_ID' });
+          return;
+        }
+        if (attachment.roomCode === code && attachment.playerId && attachment.playerId !== playerId) {
+          // One socket owns one identity per room. This prevents a single
+          // socket from filling the player/audience roster with ghost rows.
+          ack({ error: 'ALREADY_IN_ROOM' });
           return;
         }
         if (!(await this.checkRoomExists(code))) {
@@ -230,29 +365,38 @@ export class Directory {
           role,
           name: sanitize(data.name, 12),
           socketId: attachment.socketId,
+          hostSecret: normalizeSecret(data.hostSecret),
+          playerSecret: normalizeSecret(data.playerSecret),
         });
         if (!response.ok) {
-          ack({ error: 'Room not found' });
+          const result = (await response.json().catch(() => ({}))) as { error?: string };
+          ack({ error: result.error || 'Room not found' });
           return;
         }
 
         const result = (await response.json()) as {
           state?: unknown;
           becameHost?: boolean;
+          playerSecret?: string;
         };
         const becameHost = result.becameHost === true;
         attachment.roomCode = code;
         attachment.playerId = playerId;
-        attachment.role = becameHost ? 'HOST' : role;
+        attachment.role = becameHost ? 'HOST' : role === 'AUDIENCE' ? 'AUDIENCE' : 'PLAYER';
         attachment.isHost = becameHost;
         ws.serializeAttachment(attachment);
-        ack({ success: true, state: result.state ?? null, becameHost });
+        ack({
+          success: true,
+          state: result.state ?? null,
+          becameHost,
+          playerSecret: result.playerSecret,
+        });
         return;
       }
 
       case 'requestState': {
         const code = normalizeRoomCode(data.roomCode) || attachment.roomCode;
-        if (!code) {
+        if (!code || !attachment.roomCode || code !== attachment.roomCode) {
           ack(null);
           return;
         }
@@ -291,9 +435,11 @@ export class Directory {
       case 'playerEvent': {
         const code = normalizeRoomCode(data.roomCode) || attachment.roomCode;
         if (!code || !attachment.roomCode || code !== attachment.roomCode) return;
+        if (!attachment.playerId) return;
+        if (!isRecord(data.event) || !isPlayerEventType(data.event.type)) return;
         await this.roomFetch(code, '/internal/player-event', {
-          event: sanitizePlayerEvent(data.event),
-          playerId: attachment.playerId,
+          event: data.event,
+          senderId: attachment.playerId,
           socketId: attachment.socketId,
         });
         return;
@@ -308,6 +454,7 @@ export class Directory {
           requestId: data.requestId,
           playerId: attachment.playerId,
           socketId: attachment.socketId,
+          clientIp: attachment.clientIp,
         });
         return;
       }
@@ -350,13 +497,42 @@ export class Directory {
   // Room index / allocation
   // ---------------------------------------------------------------------------
 
-  async createRoomForHost(rawHostId: string, hostSocketId: string): Promise<string> {
+  async createRoomForHost(
+    rawHostId: string,
+    hostSocketId: string,
+    suppliedSecret?: string,
+  ): Promise<{ roomCode: string; hostSecret: string }> {
     const hostId = normalizeHostId(rawHostId);
     if (!hostId) throw new Error('INVALID_HOST_ID');
 
     await this.sweepStaleRooms();
+    await this.scheduleSweep();
+
+    const totalRooms =
+      this.ctx.storage.sql
+        .exec<{ count: number }>('SELECT COUNT(*) AS count FROM rooms')
+        .toArray()[0]?.count ?? 0;
+    if (totalRooms >= maxTotalRooms(this.env)) throw new Error('ROOM_LIMIT_GLOBAL');
 
     let rows = this.rowsForHost(hostId);
+    let hostSecret = normalizeSecret(suppliedSecret);
+    let hostSecretHash = '';
+
+    if (rows.length > 0) {
+      // Every room for a host shares one server-issued secret. It is required
+      // before createRoom may create, grace or close any of them.
+      if (!hostSecret) throw new Error('HOST_SECRET_REQUIRED');
+      const suppliedHash = await hashSecret(hostSecret);
+      const match = rows.find(
+        (row) => !!row.host_secret_hash && timingSafeEqual(suppliedHash, row.host_secret_hash),
+      );
+      if (!match) throw new Error('HOST_SECRET_REQUIRED');
+      hostSecretHash = match.host_secret_hash;
+    } else {
+      hostSecret = randomSecret();
+      hostSecretHash = await hashSecret(hostSecret);
+    }
+
     if (rows.length >= 3) {
       await this.closeRoomRow(rows[0].code, 'LIMIT_HARD_CAP');
       rows = this.rowsForHost(hostId);
@@ -375,17 +551,19 @@ export class Directory {
         roomCode: code,
         hostId,
         hostSocketId,
+        hostSecretHash,
       });
       if (response.status === 200) {
         try {
           this.ctx.storage.sql.exec(
-            `INSERT INTO rooms (code, host_id, created_at, phase, player_count, pending_host_reconnect)
-             VALUES (?, ?, ?, 'LOBBY', 0, 0)`,
+            `INSERT INTO rooms (code, host_id, host_secret_hash, created_at, phase, player_count, pending_host_reconnect)
+             VALUES (?, ?, ?, ?, 'LOBBY', 0, 0)`,
             code,
             hostId,
+            hostSecretHash,
             Date.now(),
           );
-          return code;
+          return { roomCode: code, hostSecret };
         } catch (error) {
           await this.roomFetch(code, '/internal/close', { reason: 'INDEX_INSERT_FAILED' });
           throw error;
@@ -408,11 +586,18 @@ export class Directory {
     return true;
   }
 
-  async roomsByHost(rawHostId: string): Promise<RoomSummary[]> {
+  async roomsByHost(rawHostId: string, rawSecret?: unknown): Promise<RoomSummary[]> {
     const hostId = normalizeHostId(rawHostId);
-    if (!hostId) return [];
+    const hostSecret = normalizeSecret(rawSecret);
+    if (!hostId || !hostSecret) return [];
 
     const rows = this.rowsForHost(hostId);
+    if (rows.length === 0) return [];
+    const suppliedHash = await hashSecret(hostSecret);
+    if (!rows.some((row) => !!row.host_secret_hash && timingSafeEqual(suppliedHash, row.host_secret_hash))) {
+      return [];
+    }
+
     const summaries = await Promise.all(
       rows.map(async (row): Promise<RoomSummary | null> => {
         const info = await this.roomInfo(row.code);
@@ -437,7 +622,7 @@ export class Directory {
   private rowsForHost(hostId: string): RoomRow[] {
     return this.ctx.storage.sql
       .exec<RoomRow>(
-        'SELECT code, host_id, created_at, phase, player_count, pending_host_reconnect FROM rooms WHERE host_id = ? ORDER BY created_at ASC',
+        'SELECT code, host_id, host_secret_hash, created_at, phase, player_count, pending_host_reconnect FROM rooms WHERE host_id = ? ORDER BY created_at ASC',
         hostId,
       )
       .toArray();
@@ -446,7 +631,7 @@ export class Directory {
   private getRow(code: string): RoomRow | null {
     const row = this.ctx.storage.sql
       .exec<RoomRow>(
-        'SELECT code, host_id, created_at, phase, player_count, pending_host_reconnect FROM rooms WHERE code = ?',
+        'SELECT code, host_id, host_secret_hash, created_at, phase, player_count, pending_host_reconnect FROM rooms WHERE code = ?',
         code,
       )
       .toArray()[0];
@@ -501,9 +686,51 @@ export class Directory {
     const stale = this.ctx.storage.sql
       .exec<{ code: string }>('SELECT code FROM rooms WHERE created_at < ?', cutoff)
       .toArray();
+    const liveRooms = new Set(
+      this.ctx
+        .getWebSockets()
+        .map((socket) => this.attachment(socket)?.roomCode)
+        .filter((code): code is string => !!code),
+    );
     for (const row of stale) {
+      // A long-running game with connected players is not stale.
+      if (liveRooms.has(row.code)) continue;
       await this.closeRoomRow(row.code, 'STALE_ROOM');
     }
+  }
+
+  /** Keep one sweep alarm regardless of how many creates happen. */
+  private async scheduleSweep(): Promise<void> {
+    try {
+      if ((await this.ctx.storage.getAlarm()) === null) {
+        await this.ctx.storage.setAlarm(Date.now() + SIX_HOURS);
+      }
+    } catch (error) {
+      console.warn('[Directory] could not schedule sweep alarm', error);
+    }
+  }
+
+  async alarm(): Promise<void> {
+    await this.sweepStaleRooms();
+    await this.scheduleSweep();
+  }
+
+  private consumeCreate(ip: string): boolean {
+    const now = Date.now();
+    const result = consumeRate(
+      this.createRates.get(ip) ?? { count: 0, windowStart: now },
+      now,
+      MAX_CREATES_PER_WINDOW,
+      CREATE_WINDOW,
+    );
+    this.createRates.set(ip, result.next);
+    if (this.createRates.size > 5000) {
+      const cutoff = now - CREATE_WINDOW * 2;
+      for (const [key, state] of this.createRates) {
+        if (state.windowStart < cutoff) this.createRates.delete(key);
+      }
+    }
+    return !result.limited;
   }
 
   private async roomFetch(
@@ -540,6 +767,10 @@ export class Directory {
     const onlySocketId = sanitize(body.onlySocketId, 128);
     const excludeSocketId = sanitize(body.excludeSocketId, 128);
     const frame = JSON.stringify(data === undefined ? { event } : { event, data });
+    if (new TextEncoder().encode(frame).byteLength > MAX_FRAME_BYTES) {
+      console.warn('[Directory] dropped oversized broadcast', event, roomCode);
+      return json({ error: 'FRAME_TOO_LARGE' }, 413);
+    }
 
     for (const socket of this.ctx.getWebSockets()) {
       const attachment = this.attachment(socket);
@@ -589,6 +820,69 @@ export class Directory {
     return json({ ok: true });
   }
 
+  private async internalTtsBudget(request: Request): Promise<Response> {
+    const body = await readJson(request);
+    const ip = sanitize(body.ip, 64) || 'unknown';
+    const chars = Math.floor(Number(body.chars));
+    if (!Number.isFinite(chars) || chars <= 0) {
+      return json({ error: 'INVALID_CHARS' }, 400);
+    }
+
+    const day = new Date().toISOString().slice(0, 10);
+    const globalKey = 'global';
+    const ipKey = `ip:${ip}`;
+    const globalCount = this.budgetCount(globalKey, day);
+    const ipCount = this.budgetCount(ipKey, day);
+    const globalLimit = ttsDailyChars(this.env);
+    const ipLimit = ttsIpDailyChars(this.env);
+
+    if (globalCount + chars > globalLimit || ipCount + chars > ipLimit) {
+      return json(
+        {
+          allowed: false,
+          error: 'TTS_BUDGET_EXCEEDED',
+          global: globalCount,
+          ip: ipCount,
+          globalLimit,
+          ipLimit,
+        },
+        429,
+      );
+    }
+
+    this.budgetAdd(globalKey, day, globalCount + chars);
+    this.budgetAdd(ipKey, day, ipCount + chars);
+    return json({
+      allowed: true,
+      global: globalCount + chars,
+      ip: ipCount + chars,
+      globalLimit,
+      ipLimit,
+    });
+  }
+
+  private budgetCount(key: string, day: string): number {
+    const row = this.ctx.storage.sql
+      .exec<{ day: string; count: number }>('SELECT day, count FROM tts_budget WHERE key = ?', key)
+      .toArray()[0];
+    if (!row) return 0;
+    if (row.day !== day) {
+      this.ctx.storage.sql.exec('DELETE FROM tts_budget WHERE key = ?', key);
+      return 0;
+    }
+    return row.count;
+  }
+
+  private budgetAdd(key: string, day: string, count: number): void {
+    this.ctx.storage.sql.exec(
+      `INSERT INTO tts_budget (key, day, count) VALUES (?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET day = excluded.day, count = excluded.count`,
+      key,
+      day,
+      count,
+    );
+  }
+
   private async internalDemote(request: Request): Promise<Response> {
     const body = await readJson(request);
     const socketId = sanitize(body.socketId, 128);
@@ -598,6 +892,21 @@ export class Directory {
       if (attachment?.socketId === socketId) {
         attachment.isHost = false;
         socket.serializeAttachment(attachment);
+      }
+    }
+    return json({ ok: true });
+  }
+
+  private async internalCloseSocket(request: Request): Promise<Response> {
+    const body = await readJson(request);
+    const socketId = sanitize(body.socketId, 128);
+    if (!socketId) return json({ ok: true });
+    for (const socket of this.ctx.getWebSockets()) {
+      if (this.attachment(socket)?.socketId !== socketId) continue;
+      try {
+        socket.close(4001, 'player resumed on another socket');
+      } catch {
+        // Already gone.
       }
     }
     return json({ ok: true });

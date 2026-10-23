@@ -154,54 +154,12 @@ retired to `docs/ROADMAP-ARCHIVE.md` as **one line**; git history keeps the narr
 - **Relations:** depends on 13 (design lab baseline/verification); supersedes the forced
   online mode in `App.tsx`.
 
-## 15. Host identity and room takeover (`[ ]`)
-
-- **Request:** the host's id is broadcast in `GameState.hostId` and accepted as the only proof of host, so any player can force host grace and rejoin as host — taking over, killing, or locking the owner out of their room (audit F-02).
-- **Approach:** issue a server-generated 128-bit host secret when the room is created; store only its hash in room meta and return the secret to the creating socket; require it on `joinRoom` host reclaim; never put the host id or secret in broadcast state; require the same token before `createRoom` can grace or close another room for that host. Files: `workers/bamboozle-rooms/src/room.ts`, `directory.ts`, `services/gameService.ts`, `types.ts`.
-- **Verify:** worker test — a player who knows `hostId` cannot reclaim; the host with the secret reclaims inside grace; a third-party `createRoom` with the victim hostId cannot demote the host; a two-browser takeover attempt fails; the normal reconnect flow still passes.
-- **Relations:** relates 16, 17; blocks host-path TTS abuse in 18; depends on 4 for deployment.
-
-## 16. Room action authorization and player-id validation (`[ ]`)
-
-- **Request:** `playerEvent` relays any event type into the host reducer and trusts `payload.playerId`, so players can start/restart/kick, change rounds, and forge lies or votes; `__proto__` ids pollute host maps (audit F-03, F-17).
-- **Approach:** allowlist player-originated event types in the Directory/room DO (`JOIN_ROOM`, `SUBMIT_LIE`, `SUBMIT_VOTE`, `SUBMIT_AUDIENCE_VOTE`, emotes); stamp `senderId` from the socket attachment and overwrite payload ids; make the host reducer reject host-only types on the player channel; validate ids against `^[A-Za-z0-9_-]{1,50}$` and reject `__proto__`/`constructor`/`prototype`; use null-prototype maps.
-- **Verify:** worker test sends `START_GAME`/`RESTART_GAME`/`REMOVE_PLAYER` via `playerEvent` → dropped; a forged vote for another player → rejected; a `__proto__` join does not touch `Object.prototype`; normal player actions still work; the e2e round passes.
-- **Relations:** relates 15, 17.
-
-## 17. Room state read authorization and enumeration (`[ ]`)
-
-- **Request:** `requestState` returns any room's full state by 4-letter code without joining; read events are unthrottled; the 456,976 codes are cheap to scan (audit F-04).
-- **Approach:** require `attachment.roomCode === code` for `requestState`; add `checkRoom`/`getRoomsByHost`/`requestState` to the limiter and add a per-IP limit; strip `hostId` from all outgoing state; consider 5–6 character codes or signed join links later.
-- **Verify:** an unjoined socket gets null/403; a joined socket reads its own room; more than 20 reads/10s returns `RATE_LIMITED`; reconnect and `JOIN LAST GAME` still work.
-- **Relations:** relates 15, 19; blocks targeting in 16.
-
-## 18. TTS cost abuse (`[ ]`)
-
-- **Request:** `POST /api/tts` is public, unauthenticated, unthrottled and unused by the client; unique text can run up Google TTS/GCS spend (audit F-05).
-- **Approach:** remove the route in production (404 unless an explicit flag plus a host token) or require a short-lived host token; add per-IP and global character budgets; set a hard Google TTS quota and a GCP budget alert; keep the MD5 cache key untouched. Files: `workers/bamboozle-rooms/src/index.ts`, `src/tts.ts`, `wrangler.toml`.
-- **Verify:** anonymous POST → 404/401; an authorised host request returns audio; repeated unique text trips the budget; the cache hit still works; `npm run test:worker` and `scripts/smoke.mjs`.
-- **Relations:** relates 19, 23.
-
-## 19. Abuse and availability caps (`[ ]`)
-
-- **Request:** only a per-socket 20/10s limit exists (reset on reconnect); `createRoom` is capped per caller-supplied hostId; there is no per-IP/global socket or room cap; free-plan quota exhaustion stops every room (audit F-06).
-- **Approach:** Cloudflare rate-limit rules/Turnstile per IP; per-IP socket and create caps; add read events to the limiter; a server-side player cap; a periodic sweep instead of create-time only; cap broadcast state size.
-- **Verify:** scripted socket/hostId churn gets 429; a legitimate 6-player, 2-room session is unaffected; the load smoke stays under the free-plan budget.
-- **Relations:** depends on 4; relates 18, 28.
-
 ## 20. Legacy server hardening or retirement (`[ ]`)
 
 - **Request:** `server/` is the documented rollback but accepts `gameStateUpdate`/`hostEvent`/`requestNarrator` from any socket, uses `cors: '*'`, and mounts unauthenticated `/api/admin/*` when `NODE_ENV !== 'production'` (audit F-07).
 - **Approach:** add `rooms[code]?.hostSocketId === socket.id` guards; require an `ADMIN_TOKEN` and `NODE_ENV=production` for admin; remove or protect `/api/tts`; otherwise retire `server/` once item 4 is closed. Keep it as rollback only.
 - **Verify:** a socket integration test proves unauth state updates are ignored; unauth admin → 401; unauth TTS → 401/404; the rollback smoke passes.
 - **Relations:** depends on 4 (retire after cutover); relates 26.
-
-## 21. CI and typecheck gate (`[ ]`)
-
-- **Request:** there is no CI, no branch protection and Netlify builds only; `tsc --noEmit` already fails and 56 tests never gate a deploy (audit F-08).
-- **Approach:** add `.github/workflows/ci.yml` (`npm ci`, lint, `tsc --noEmit`, unit, worker typecheck/tests, build, Playwright) on PR/push; require checks and a PR on `main`; delete or ignore `data/_oldquestions.ts`, exclude `workers/**` from the root tsconfig, fix the stale i18n import.
-- **Verify:** a PR with a failing test/typecheck is blocked; `main` is green; Netlify production only follows a green `main`.
-- **Relations:** enables the gates in 30, 22, 32.
 
 ## 22. Build Tailwind and add CSP/security headers (`[ ]`)
 
@@ -223,13 +181,6 @@ retired to `docs/ROADMAP-ARCHIVE.md` as **one line**; git history keeps the narr
 - **Approach:** publish privacy + terms matching the real flow (names, narration text, Google TTS/GCS, localStorage ids, retention), link them in Settings and the store listing, document subprocessors, and add a deletion/retention rule for narration audio.
 - **Verify:** pages are live and linked; a deletion request removes the audio; Play data-safety answers match; legal review recorded.
 - **Relations:** blocks 9; relates 35.
-
-## 25. Retire the client-trusted host-token design (`[ ]`)
-
-- **Request:** `docs/BILLING_INTEGRATION.md` still specifies `POST /api/get-host-token` signing a host JWT from a client `userId` without verifying `rcToken`, and calls trusting the client acceptable; it must not be implemented (audit F-12).
-- **Approach:** add a prominent "superseded — do not implement" banner to `docs/BILLING_INTEGRATION.md` §4.3 and `docs/ENTITLEMENT_SYSTEM.md`, point at item 5, and remove the snippet so a future agent cannot copy it.
-- **Verify:** `rg 'get-host-token|trusting the client' docs` returns only the banner; item 5's token flow is the only documented path.
-- **Relations:** superseded by 5; blocks 8.
 
 ## 26. Rollback and disaster recovery (`[ ]`)
 

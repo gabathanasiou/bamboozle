@@ -57,6 +57,7 @@ export async function getAudio(
   text: string,
   language: 'en' | 'el',
   roomCode: string,
+  beforeGenerate?: () => Promise<void>,
 ): Promise<TtsResult> {
   if (!text) throw new Error('TEXT_REQUIRED');
 
@@ -69,6 +70,10 @@ export async function getAudio(
     console.log(`[TTS] CACHE HIT room=${roomCode} file=${filename}`);
     return { file: filename, url: publicUrl, isHit: true };
   }
+
+  // The callback consumes the TTS budget. It runs only on a cache miss, so a
+  // cache hit never spends the monthly/daily allowance.
+  if (beforeGenerate) await beforeGenerate();
 
   console.log(`[TTS] GENERATE room=${roomCode} file=${filename}`);
   const audio = await synthesize(env, text, language);

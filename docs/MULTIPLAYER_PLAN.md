@@ -210,11 +210,9 @@ The lightest phase — small additions to the existing server.
 - [ ] Wire free trial logic
 
 **Server Code:**
-- [ ] `npm install jsonwebtoken` (in `/server`)
-- [ ] Add `server/entitlement.js` (JWT issue + validate helpers)
-- [ ] Add `POST /api/get-host-token` endpoint
-- [ ] Gate `createRoom` to require valid JWT in production
-- [ ] Add `JWT_SECRET` to Railway environment variables
+- Superseded — do not implement the host JWT design. Roadmap item 5 uses a separate
+  Supabase project + Edge Function to mint a short-lived room token that the Worker
+  checks through `authorizeHost()`.
 
 **Testing:**
 - [ ] End-to-end test purchase with license tester account

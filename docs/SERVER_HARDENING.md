@@ -18,7 +18,7 @@ design choice below protects the daily request/CPU/storage budgets.
 | Player disconnects | `playerDisconnected`; 60s `player_kick` alarm → `playerKicked` |
 | Player reconnects | `joinRoom` clears the kick deadline |
 | Stale index row | `checkRoom`/`joinRoom` verifies the room DO and deletes the row |
-| Room older than 6h | Swept on the next `createRoom` |
+| Room older than 6h | 6h Directory alarm (also swept on `createRoom`) |
 
 All timers are **Durable Object alarms** persisted in SQLite. No `setTimeout`/
 `setInterval` in the Worker: they block hibernation and bill duration.
@@ -34,17 +34,47 @@ All timers are **Durable Object alarms** persisted in SQLite. No `setTimeout`/
 This allows unlimited sequential games while preventing one host from holding many
 open rooms. A legitimate player never notices it.
 
-## 3. Event rate limit
+## 3. Event rate limits
 
 `MAX_EVENTS_PER_WINDOW = 20`, `EVENT_RATE_WINDOW = 10_000`, per socket.
 
-Applies to `createRoom`, `joinRoom`, `gameStateUpdate`, `hostEvent`,
-`requestNarrator` and `playerEvent`. The counter lives in the WebSocket
-attachment, so it survives hibernation. Acked requests receive
-`{ok:false,error:"RATE_LIMITED"}`; fire-and-forget events are silently dropped.
-Normal play (one action every few seconds) never reaches the limit.
+Applies to `createRoom`, `joinRoom`, `checkRoom`, `getRoomsByHost`, `requestState`,
+`gameStateUpdate`, `hostEvent`, `requestNarrator` and `playerEvent`. The counter
+lives in the WebSocket attachment, so it survives hibernation. Acked requests
+receive `{ok:false,error:"RATE_LIMITED"}`; fire-and-forget events are silently
+dropped.
 
-## 4. Input validation & sanitisation
+`checkRoom`/`getRoomsByHost`/`requestState`/`joinRoom` also have a best-effort
+per-IP budget of 60 per 10s (held in the Directory isolate) so one address cannot
+spray many sockets. Normal play (one action every few seconds) never reaches the
+limit.
+
+`getRoomsByHost` requires a host secret matching the indexed rows for that host
+id. Without it (or with a wrong one) the Directory returns `[]`, so host ids
+cannot be enumerated and other hosts' room codes/player names are not disclosed.
+
+## 4. Abuse and availability caps
+
+| Cap | Default | Where |
+|---|---|---|
+| WebSockets per IP / total | 32 / 1000 | Directory WebSocket upgrade |
+| WebSocket upgrades per IP | 30 per minute | Directory upgrade budget |
+| `createRoom` per IP | 10 per hour | Directory |
+| Rooms per socket | 1 | Directory (second create → `ALREADY_IN_ROOM`) |
+| Rooms total | 500 | Directory |
+| Players per room | 6 (+ host) | `BambooRoom.join` / `playerEvent` |
+| Audience per room | 20 | `BambooRoom.join` / `playerEvent` |
+| Broadcast state | 128 KiB | `BambooRoom.stateUpdate` |
+| Broadcast frame | 256 KiB | Directory |
+| Stale-room sweep | every 6h | Directory DO alarm |
+
+All limits are env-overridable (`MAX_SOCKETS_PER_IP`, `MAX_SOCKETS_TOTAL`,
+`MAX_TOTAL_ROOMS`, `MAX_PLAYERS_PER_ROOM`, `MAX_AUDIENCE_PER_ROOM`,
+`MAX_STATE_BYTES`). Cloudflare rate-limit rules / Turnstile are an additional
+edge layer; configure them in the dashboard for `/ws` and `/api/tts` (for
+example 30 requests/minute per IP) so abusive traffic never reaches the DO.
+
+## 5. Input validation & sanitisation
 
 | Input | Rule |
 |---|---|
@@ -59,22 +89,58 @@ Normal play (one action every few seconds) never reaches the limit.
 `sanitize()` is the same `replace(/<[^>]*>?/gm,'').substring(0,len).trim()` as the
 old server. Unknown fields pass through, but the interactive text fields are clamped.
 
-## 5. Host authority checks
+## 6. Host authority checks
 
 Only the current host socket can send `gameStateUpdate`, `hostEvent` or
 `requestNarrator`. The room DO compares the socket id to `hostSocketId`; a demoted
 host socket (3rd-room grace) is rejected until it reclaims.
 
-## 6. TTS cost protection
+`hostSocketId` is bound only after the socket proves it knows the server-issued
+host secret: a SHA-256 hash is stored in room meta and the raw secret is returned
+once to the creating socket. `joinRoom` reclaim compares hashes with a
+constant-time comparison. `hostId` is public-ish and is never accepted alone;
+`createRoom` also requires the secret before it may grace or close another room
+for that host.
+
+`playerEvent` is a separate, unprivileged channel: only the player-action
+allowlist is relayed, sender ids are stamped from the socket attachment, and
+host-only types are rejected in both the room DO and the host reducer. Category
+selection is allowed only when the stamped sender is the current selector.
+
+Player identity is not taken from the client id alone. The first join mints a
+per-player 128-bit resume secret (hash stored in the player row), returned once
+and required on every later join of that id. The row also stores the owning
+`socket_id`; `playerEvent` and `disconnect` are accepted only from that socket,
+so a second socket cannot impersonate the player or kick them. A successful
+reconnect closes the replaced socket via Directory `/internal/close-socket`.
+
+## 7. TTS cost protection
 
 - GCS cache is checked first; a hit costs one metadata request and no TTS billing.
 - The cache key is **MD5** `md5(text + "-" + language).mp3` — never change it.
 - Text is capped at 500 characters.
 - Google access tokens are cached in KV (`expirationTtl: 3300`) plus isolate memory,
   so token exchanges are ~24/day, not per request.
-- TTS is generated only by the host path; `/api/tts` is a manual fallback.
+- TTS is generated only by the host-authenticated `requestNarrator` path and the
+  ops API. Hosting itself is not entitlement-gated in phase 1 (`AUTH_MODE=none`),
+  so the character budget is the code-level backstop.
+- `POST /api/tts` is **disabled by default** (404). It only exists when the
+  `TTS_API_TOKEN` secret is set; requests must send
+  `Authorization: Bearer <token>` (401 otherwise). This is an ops fallback, not a
+  host entitlement path.
+- On a cache miss, both paths consume a character budget from the Directory:
+  50,000 characters/day globally and 5,000/IP/day by default. Cache hits consume
+  nothing. Exceeding either returns `429 TTS_BUDGET_EXCEEDED` (the room path
+  falls back to the client's local voice).
+- Set the GCP guardrails out-of-band:
+  - A hard Cloud Text-to-Speech quota (characters/minute) on the project.
+  - A Cloud Billing budget with alert thresholds (50/80/100%) and a Pub/Sub or
+    email notification to the owner.
+  - A GCS lifecycle/retention rule if narration audio should be deleted.
+  The Worker cannot create these; record the project/budget ids in
+  `docs/DEPLOYMENT.md` when set.
 
-## 7. Free-plan guardrails
+## 8. Free-plan guardrails
 
 - Workers Free: 100k requests/day, 10 ms CPU/invocation.
 - DO Free (SQLite): 100k requests/day, 13k GB-s/day, 5 GB storage.
@@ -85,7 +151,7 @@ host socket (3rd-room grace) is rejected until it reclaims.
 - If a launch/streamer night exceeds the daily caps, upgrade to Workers Paid ($5/mo);
   the code needs no changes.
 
-## 8. Logging
+## 9. Logging
 
 Structured console logs (visible in `wrangler tail`):
 
@@ -97,7 +163,7 @@ Structured console logs (visible in `wrangler tail`):
 No purchase/identity logging exists in phase 1 because there is no auth or payment
 code. The `authorizeHost()` seam is `AUTH_MODE=none`.
 
-## 9. Cost projection
+## 10. Cost projection
 
 | Component | Cost |
 |---|---|

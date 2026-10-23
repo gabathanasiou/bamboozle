@@ -47,8 +47,106 @@ const joinNames = (names: string[], language: Language): string => {
 
 
 const STORAGE_KEY = 'bamboozle_used_questions';
+const HOST_SECRET_KEY = 'bamboozle_host_secret';
+const PLAYER_SECRET_PREFIX = 'bamboozle_player_secret_';
 const MAX_PLAYERS = 6;
 // SOCKET_URL moved inside hook to be dynamic
+
+/** Only these player-originated events reach the host reducer. */
+const PLAYER_EVENT_TYPES = new Set<GameEvent['type']>([
+  'JOIN_ROOM',
+  'JOIN_AUDIENCE',
+  'TOGGLE_READY',
+  'SUBMIT_LIE',
+  'SUBMIT_VOTE',
+  'SUBMIT_AUDIENCE_VOTE',
+  'SELECT_CATEGORY',
+  'SEND_EMOTE',
+]);
+
+const getHostSecret = (): string => {
+  try {
+    return localStorage.getItem(HOST_SECRET_KEY) || '';
+  } catch {
+    return '';
+  }
+};
+const storeHostSecret = (secret: string): void => {
+  if (!secret) return;
+  try {
+    localStorage.setItem(HOST_SECRET_KEY, secret);
+  } catch {
+    // A full/blocked localStorage must not break room creation.
+  }
+};
+const forgetHostSecret = (): void => {
+  try {
+    localStorage.removeItem(HOST_SECRET_KEY);
+  } catch {
+    // Ignore.
+  }
+};
+
+const playerSecretKey = (roomCode: string) => `${PLAYER_SECRET_PREFIX}${roomCode}`;
+const getPlayerSecret = (roomCode: string): string => {
+  if (!roomCode) return '';
+  try {
+    return localStorage.getItem(playerSecretKey(roomCode)) || '';
+  } catch {
+    return '';
+  }
+};
+const storePlayerSecret = (roomCode: string, secret: string): void => {
+  if (!roomCode || !secret) return;
+  try {
+    localStorage.setItem(playerSecretKey(roomCode), secret);
+  } catch {
+    // Ignore.
+  }
+};
+const forgetPlayerSecret = (roomCode: string): void => {
+  if (!roomCode) return;
+  try {
+    localStorage.removeItem(playerSecretKey(roomCode));
+  } catch {
+    // Ignore.
+  }
+};
+const resetPlayerIdentity = (roomCode: string): void => {
+  try {
+    localStorage.removeItem('bamboozle_player_id');
+    localStorage.removeItem('bamboozle_room_code');
+    forgetPlayerSecret(roomCode);
+  } catch {
+    // Ignore.
+  }
+  window.location.reload();
+};
+
+/** Null-prototype map so `__proto__` can never reach Object.prototype. */
+const safeRecord = <T,>(): Record<string, T> => Object.create(null) as Record<string, T>;
+
+const toSafeRecord = <T,>(value: unknown): Record<string, T> => {
+  const record = safeRecord<T>();
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return record;
+  for (const [key, entry] of Object.entries(value)) {
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+    record[key] = entry as T;
+  }
+  return record;
+};
+
+const withEntry = <T,>(record: Record<string, T>, key: string, value: T): Record<string, T> => {
+  const next = Object.assign(safeRecord<T>(), record);
+  next[key] = value;
+  return next;
+};
+
+const withoutEntry = <T,>(record: Record<string, T>, key: string): Record<string, T> => {
+  const next = Object.assign(safeRecord<T>(), record);
+  delete next[key];
+  return next;
+};
 
 // Bot Data
 // BOT_NAMES removed - using localized getBotNames()
@@ -100,9 +198,9 @@ const normalizeState = (incoming: unknown): GameState => {
   return {
     ...INITIAL_STATE,
     ...source,
-    players: source.players ?? {},
-    audience: source.audience ?? {},
-    submittedLies: source.submittedLies ?? {},
+    players: toSafeRecord<Player>(source.players),
+    audience: toSafeRecord<AudienceMember>(source.audience),
+    submittedLies: toSafeRecord<string>(source.submittedLies),
     roundAnswers: source.roundAnswers ?? [],
     usedQuestionIds: Array.isArray(source.usedQuestionIds) ? source.usedQuestionIds : [],
     playersWhoPicked: Array.isArray(source.playersWhoPicked) ? source.playersWhoPicked : [],
@@ -149,7 +247,12 @@ export const useGameService = (
 
   // Initialize state with persistence check for HOST
   const [state, setState] = useState<GameState>(() => {
-    const baseState = { ...INITIAL_STATE };
+    const baseState = {
+      ...INITIAL_STATE,
+      players: safeRecord<Player>(),
+      audience: safeRecord<AudienceMember>(),
+      submittedLies: safeRecord<string>(),
+    };
 
     // Load Settings
     try {
@@ -505,10 +608,14 @@ export const useGameService = (
       return;
     }
 
-    socketRef.current.emit('getRoomsByHost', { hostId: playerId }, (rooms: any[]) => {
-      import.meta.env.DEV && console.log('[GameService] getRoomsByHost response:', rooms);
-      callback(rooms);
-    });
+    socketRef.current.emit(
+      'getRoomsByHost',
+      { hostId: playerId, hostSecret: getHostSecret() },
+      (rooms: any[]) => {
+        import.meta.env.DEV && console.log('[GameService] getRoomsByHost response:', rooms);
+        callback(Array.isArray(rooms) ? rooms : []);
+      },
+    );
   }, [playerId]);
 
   const checkRoomExists = (roomCode: string, callback: (exists: boolean) => void) => {
@@ -589,7 +696,7 @@ export const useGameService = (
       if (hostListenersAttachedRef.current) return;
       hostListenersAttachedRef.current = true;
       client.on('playerEvent', (event) => {
-        processHostEvent(event as GameEvent);
+        handlePlayerEvent(event as GameEvent);
       });
     };
 
@@ -612,41 +719,54 @@ export const useGameService = (
 
     const joinHostRoom = (roomCode: string) => {
       import.meta.env.DEV && console.log('[GameService] Joining room as host:', roomCode);
-      client.emit('joinRoom', { roomCode, role: 'HOST', id: playerId }, (response: any) => {
-        if (!response?.success) {
-          console.error('[GameService] Failed to rejoin room:', response?.error);
-          if (response?.error === 'Room not found') {
-            localStorage.removeItem('bamboozle_room_code');
-            setHostDisconnected(false);
-            setRoomClosed(true);
+      client.emit(
+        'joinRoom',
+        { roomCode, role: 'HOST', id: playerId, hostSecret: getHostSecret() },
+        (response: any) => {
+          if (!response?.success) {
+            console.error('[GameService] Failed to rejoin room:', response?.error);
+            if (response?.error === 'Room not found' || response?.error === 'HOST_SECRET_REQUIRED') {
+              localStorage.removeItem('bamboozle_room_code');
+              forgetHostSecret();
+              setHostDisconnected(false);
+              setRoomClosed(true);
+            }
+            return;
           }
-          return;
-        }
 
-        const recovered: GameState = {
-          ...normalizeState(response.state),
-          usePremiumVoices: stateRef.current.usePremiumVoices,
-        };
-        if (response.becameHost) {
+          const recovered: GameState = {
+            ...normalizeState(response.state),
+            usePremiumVoices: stateRef.current.usePremiumVoices,
+          };
+          if (!response.becameHost) {
+            // A host socket that is not granted host must never act as host.
+            console.error('[GameService] Room did not grant host status:', roomCode);
+            return;
+          }
           applyReclaimedHost(roomCode, recovered);
-        } else {
-          stateRef.current = recovered;
-          setState(recovered);
-          isHostRef.current = true;
-          setupHostListeners();
-          client.emit('gameStateUpdate', { roomCode, gameState: recovered });
-          resumeGameProgression(recovered);
-        }
-      });
+        },
+      );
     };
 
     const createHostRoom = () => {
       import.meta.env.DEV && console.log('[GameService] Creating room for host:', playerId);
-      client.emit('createRoom', { hostId: playerId }, (roomCode: any) => {
+      client.emit('createRoom', { hostId: playerId, hostSecret: getHostSecret() }, (result: any) => {
+        const roomCode = typeof result === 'string' ? result : result?.roomCode;
+        const hostSecret = typeof result === 'object' && result ? result.hostSecret : '';
         if (typeof roomCode !== 'string' || !roomCode) {
-          console.error('[GameService] Server failed to return a roomCode!', roomCode);
+          if (result?.error === 'HOST_SECRET_REQUIRED') {
+            // This device cannot prove ownership of the old host id. Start a
+            // fresh identity so hosting is not locked out by the stale rooms.
+            localStorage.removeItem('bamboozle_player_id');
+            localStorage.removeItem('bamboozle_room_code');
+            forgetHostSecret();
+            window.location.reload();
+            return;
+          }
+          console.error('[GameService] Server failed to return a roomCode!', result);
           return;
         }
+        if (typeof hostSecret === 'string' && hostSecret) storeHostSecret(hostSecret);
         import.meta.env.DEV && console.log('[GameService] Room created successfully:', roomCode);
         localStorage.setItem('bamboozle_room_code', roomCode);
         const next = { ...stateRef.current, roomCode };
@@ -657,17 +777,22 @@ export const useGameService = (
     };
 
     const adoptOrCreateHostRoom = () => {
-      // If a createRoom ack was lost with the connection, adopt the room that
-      // did get created instead of leaking a second room.
-      client.emit('getRoomsByHost', { hostId: playerId }, (rooms: any) => {
-        if (!Array.isArray(rooms)) return;
-        const newest = [...rooms]
-          .filter((room) => room && typeof room.roomCode === 'string')
-          .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))
-          .pop();
-        if (newest) joinHostRoom(newest.roomCode);
-        else createHostRoom();
-      });
+      // Only adopt rooms this device can prove it created. Without the host
+      // secret the room is not ours to reclaim.
+      client.emit(
+        'getRoomsByHost',
+        { hostId: playerId, hostSecret: getHostSecret() },
+        (rooms: any) => {
+          if (!Array.isArray(rooms)) return;
+          const hasSecret = !!getHostSecret();
+          const adoptable = [...rooms]
+            .filter((room) => room && typeof room.roomCode === 'string')
+            .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+          const newest = hasSecret ? adoptable.pop() : undefined;
+          if (newest) joinHostRoom(newest.roomCode);
+          else createHostRoom();
+        },
+      );
     };
 
     const onConnect = () => {
@@ -684,23 +809,34 @@ export const useGameService = (
       // reconnect, re-join the room we were already in.
       const roomCode = stateRef.current.roomCode;
       if (!roomCode) return;
-      client.emit('joinRoom', { roomCode, id: playerId }, (response: any) => {
-        if (!response?.success) {
-          console.error('[GameService] Failed to rejoin room:', response?.error);
-          if (response?.error === 'Room not found') {
-            localStorage.removeItem('bamboozle_room_code');
-            setRoomClosed(true);
+      client.emit(
+        'joinRoom',
+        { roomCode, id: playerId, playerSecret: getPlayerSecret(roomCode) },
+        (response: any) => {
+          if (!response?.success) {
+            console.error('[GameService] Failed to rejoin room:', response?.error);
+            if (response?.error === 'Room not found') {
+              localStorage.removeItem('bamboozle_room_code');
+              setRoomClosed(true);
+            } else if (response?.error === 'PLAYER_SECRET_REQUIRED') {
+              // This device cannot prove the old seat is ours. Start as a new
+              // player instead of leaving a permanent invalid identity.
+              resetPlayerIdentity(roomCode);
+            }
+            return;
           }
-          return;
-        }
-        if (response.becameHost) {
-          applyReclaimedHost(roomCode, response.state);
-          return;
-        }
-        const recovered = normalizeState(response.state);
-        stateRef.current = recovered;
-        setState(recovered);
-      });
+          if (typeof response.playerSecret === 'string' && response.playerSecret) {
+            storePlayerSecret(roomCode, response.playerSecret);
+          }
+          if (response.becameHost) {
+            applyReclaimedHost(roomCode, response.state);
+            return;
+          }
+          const recovered = normalizeState(response.state);
+          stateRef.current = recovered;
+          setState(recovered);
+        },
+      );
     };
 
     client.on('connect', onConnect);
@@ -828,7 +964,7 @@ export const useGameService = (
         if (Math.random() < 0.05 || state.timeLeft < 5) {
           const options = state.categorySelection.options;
           const randomCat = options[Math.floor(Math.random() * options.length)];
-          processHostEvent({ type: 'SELECT_CATEGORY', payload: { category: randomCat } });
+          processHostEvent({ type: 'SELECT_CATEGORY', payload: { category: randomCat, playerId: state.categorySelection.selectorId } });
         }
       }
     }
@@ -913,8 +1049,7 @@ export const useGameService = (
           next.players[event.payload.id].isConnected = true;
           // Clean up audience if they somehow got there
           if (next.audience[event.payload.id]) {
-            const { [event.payload.id]: _, ...rest } = next.audience;
-            next.audience = rest;
+            next.audience = withoutEntry(next.audience, event.payload.id);
           }
           changed = true;
           break;
@@ -923,15 +1058,12 @@ export const useGameService = (
         // 2. LATE JOIN: If game not in LOBBY, divert *new* IDs to Audience
         if (next.phase !== GamePhase.LOBBY) {
           if (!next.audience[event.payload.id]) {
-            next.audience = {
-              ...next.audience,
-              [event.payload.id]: {
-                id: event.payload.id,
-                name: event.payload.name + " (Late)",
-                avatarSeed: event.payload.avatarSeed,
-                isBot: event.payload.isBot
-              }
-            };
+            next.audience = withEntry(next.audience, event.payload.id, {
+              id: event.payload.id,
+              name: event.payload.name + " (Late)",
+              avatarSeed: event.payload.avatarSeed,
+              isBot: event.payload.isBot
+            });
             sfx.play('JOIN'); // SFX
             changed = true;
           }
@@ -958,10 +1090,7 @@ export const useGameService = (
               previousRank: Object.keys(next.players).length
             };
 
-            next.players = {
-              ...next.players,
-              [event.payload.id]: newPlayer
-            };
+            next.players = withEntry(next.players, event.payload.id, newPlayer);
 
             // VIP LOGIC:
             // 1. If no VIP, new player is VIP.
@@ -980,7 +1109,7 @@ export const useGameService = (
               const current = stateRef.current;
               if (current.players[pid]) {
                 const updated = { ...current };
-                updated.players = { ...current.players, [pid]: { ...current.players[pid], expression: 'NEUTRAL' } };
+                updated.players = withEntry(current.players, pid, { ...current.players[pid], expression: 'NEUTRAL' });
                 stateRef.current = updated;
                 setState(updated);
                 broadcastState(updated);
@@ -995,15 +1124,12 @@ export const useGameService = (
       case 'JOIN_AUDIENCE':
         // Can join audience at any time
         if (!next.audience[event.payload.id]) {
-          next.audience = {
-            ...next.audience,
-            [event.payload.id]: {
-              id: event.payload.id,
-              name: event.payload.name,
-              avatarSeed: event.payload.avatarSeed,
-              isBot: event.payload.isBot
-            }
-          };
+          next.audience = withEntry(next.audience, event.payload.id, {
+            id: event.payload.id,
+            name: event.payload.name,
+            avatarSeed: event.payload.avatarSeed,
+            isBot: event.payload.isBot
+          });
           sfx.play('JOIN');
           if (Math.random() < 0.3) {
             speak(getNarratorPhrase(next.language, 'AUDIENCE_JOIN', {}), false, `JOIN_AUDIENCE_${event.payload.id}`);
@@ -1017,14 +1143,11 @@ export const useGameService = (
         if (next.phase === GamePhase.LOBBY && next.players[event.payload.playerId]) {
           const isNowReady = !next.players[event.payload.playerId].isReady;
 
-          next.players = {
-            ...next.players,
-            [event.payload.playerId]: {
-              ...next.players[event.payload.playerId],
-              isReady: isNowReady,
-              expression: isNowReady ? 'SMUG' : 'NEUTRAL'
-            }
-          };
+          next.players = withEntry(next.players, event.payload.playerId, {
+            ...next.players[event.payload.playerId],
+            isReady: isNowReady,
+            expression: isNowReady ? 'SMUG' : 'NEUTRAL'
+          });
 
           sfx.play('CLICK');
           if (isNowReady) next.players[event.payload.playerId].expression = 'SMUG';
@@ -1080,7 +1203,12 @@ export const useGameService = (
         break;
 
       case 'SELECT_CATEGORY':
-        if (next.phase === GamePhase.CATEGORY_SELECT && next.categorySelection && !next.categorySelection.selected) {
+        if (
+          next.phase === GamePhase.CATEGORY_SELECT &&
+          next.categorySelection &&
+          !next.categorySelection.selected &&
+          event.payload.playerId === next.categorySelection.selectorId
+        ) {
           next.categorySelection = { ...next.categorySelection, selected: event.payload.category };
           next.playersWhoPicked = [...next.playersWhoPicked, next.categorySelection.selectorId];
 
@@ -1112,10 +1240,13 @@ export const useGameService = (
             // Ensure text isn't empty (double check)
             if (!event.payload.text || event.payload.text.trim() === '') break;
 
-            next.submittedLies = { ...next.submittedLies, [event.payload.playerId]: event.payload.text };
+            next.submittedLies = withEntry(next.submittedLies, event.payload.playerId, event.payload.text);
             sfx.play('POP');
             if (next.players[event.payload.playerId]) {
-              next.players[event.payload.playerId].expression = 'SMUG';
+              next.players = withEntry(next.players, event.payload.playerId, {
+                ...next.players[event.payload.playerId],
+                expression: 'SMUG'
+              });
             }
 
             const activePlayers = Object.values(next.players).filter((p: Player) => p.isConnected);
@@ -1131,10 +1262,12 @@ export const useGameService = (
         if (next.phase === GamePhase.VOTING) {
           const player = next.players[event.payload.playerId];
           if (player && !player.currentVote) {
-            player.currentVote = event.payload.answerId;
-            player.expression = 'THINKING';
             sfx.play('CLICK');
-            next.players[event.payload.playerId] = { ...player };
+            next.players = withEntry(next.players, event.payload.playerId, {
+              ...player,
+              currentVote: event.payload.answerId,
+              expression: 'THINKING'
+            });
 
             const activePlayers = Object.values(next.players).filter((p: Player) => p.isConnected);
             const votes = Object.values(next.players).filter((p: Player) => p.currentVote).length;
@@ -1259,12 +1392,11 @@ export const useGameService = (
             const playerName = targetPlayer.name;
 
             // Remove the player
-            const { [targetId]: removed, ...remainingPlayers } = next.players;
-            next.players = remainingPlayers;
+            next.players = withoutEntry(next.players, targetId);
 
             // If removed player was VIP, reassign VIP
             if (next.vipId === targetId) {
-              const remainingPlayerList = Object.values(remainingPlayers);
+              const remainingPlayerList = Object.values(next.players);
               // Prefer human players for VIP
               const humanPlayer = remainingPlayerList.find(p => !p.isBot);
               const newVip = humanPlayer || remainingPlayerList[0];
@@ -1411,7 +1543,7 @@ export const useGameService = (
       const s = stateRef.current;
       if (s.phase === GamePhase.CATEGORY_SELECT && s.categorySelection && !s.categorySelection.selected) {
         const randomCat = s.categorySelection.options[Math.floor(Math.random() * s.categorySelection.options.length)];
-        processHostEvent({ type: 'SELECT_CATEGORY', payload: { category: randomCat } });
+        processHostEvent({ type: 'SELECT_CATEGORY', payload: { category: randomCat, playerId: s.categorySelection.selectorId } });
       }
     });
   };
@@ -1841,7 +1973,7 @@ export const useGameService = (
           const s = stateRef.current;
           if (s.phase === GamePhase.CATEGORY_SELECT && s.categorySelection && !s.categorySelection.selected) {
             const randomCat = s.categorySelection.options[Math.floor(Math.random() * s.categorySelection.options.length)];
-            processHostEvent({ type: 'SELECT_CATEGORY', payload: { category: randomCat } });
+            processHostEvent({ type: 'SELECT_CATEGORY', payload: { category: randomCat, playerId: s.categorySelection.selectorId } });
           }
         });
       }
@@ -1885,6 +2017,11 @@ export const useGameService = (
     }
   }, []);
 
+  const handlePlayerEvent = (event: GameEvent) => {
+    if (!event || !PLAYER_EVENT_TYPES.has(event.type)) return;
+    processHostEvent(event);
+  };
+
   const dispatch = (event: GameEvent) => {
     // Debug log
     import.meta.env.DEV && console.log('[Dispatch]', isHostRef.current ? 'HOST' : role, event.type, stateRef.current.roomCode);
@@ -1898,8 +2035,22 @@ export const useGameService = (
 
   // Exposed Actions
   const joinRoom = (roomCode: string, callback?: (success: boolean, error?: string, becameHost?: boolean) => void) => {
-    socketRef.current?.emit('joinRoom', { roomCode, id: playerId }, (response: any) => {
-      if (response.success) {
+    socketRef.current?.emit(
+      'joinRoom',
+      { roomCode, id: playerId, playerSecret: getPlayerSecret(roomCode) },
+      (response: any) => {
+        if (!response?.success) {
+          if (response?.error === 'PLAYER_SECRET_REQUIRED') {
+            resetPlayerIdentity(roomCode);
+            return;
+          }
+          if (callback) callback(false, response?.error);
+          return;
+        }
+
+        if (typeof response.playerSecret === 'string' && response.playerSecret) {
+          storePlayerSecret(roomCode, response.playerSecret);
+        }
         // Update both stateRef and setState to ensure everything is in sync
         const recovered = normalizeState(response.state);
         stateRef.current = recovered;
@@ -1916,7 +2067,7 @@ export const useGameService = (
           if (!hostListenersAttachedRef.current) {
             hostListenersAttachedRef.current = true;
             socketRef.current?.on('playerEvent', (event) => {
-              processHostEvent(event as GameEvent);
+              handlePlayerEvent(event as GameEvent);
             });
           }
 
@@ -1940,10 +2091,8 @@ export const useGameService = (
         // Save code on successful join
         import.meta.env.DEV && console.log('[GameService] Joined room:', roomCode, '. Saving to localStorage.');
         localStorage.setItem('bamboozle_room_code', roomCode);
-      } else {
-        if (callback) callback(false, response.error);
-      }
-    });
+      },
+    );
   };
 
   const sendJoin = (name: string, avatarSeed: string) => {
@@ -1978,7 +2127,7 @@ export const useGameService = (
   const removePlayer = (targetPlayerId: string) => dispatch({ type: 'REMOVE_PLAYER', payload: { playerId: targetPlayerId } });
 
   const sendRestart = () => dispatch({ type: 'RESTART_GAME', payload: null });
-  const sendCategorySelection = (category: string) => dispatch({ type: 'SELECT_CATEGORY', payload: { category } });
+  const sendCategorySelection = (category: string) => dispatch({ type: 'SELECT_CATEGORY', payload: { category, playerId } });
 
   const requestSync = (callback?: (success: boolean) => void) => {
     const now = Date.now();

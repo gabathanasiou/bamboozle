@@ -3,11 +3,16 @@ import {
   MAX_ANSWER_LENGTH,
   MAX_EVENTS_PER_WINDOW,
   MAX_FRAME_BYTES,
+  canReadRoomState,
   consumeRate,
+  hashSecret,
+  normalizeSecret,
   normalizeRoomCode,
   parseClientMessage,
   sanitize,
   sanitizePlayerEvent,
+  stampPlayerEvent,
+  validatePlayerId,
 } from '../src/protocol';
 import { ttsCacheKey, ttsObjectName, ttsPublicUrl } from '../src/tts';
 
@@ -67,6 +72,77 @@ describe('sanitize', () => {
     expect(normalizeRoomCode('ABC')).toBeNull();
     expect(normalizeRoomCode('AB1D')).toBeNull();
     expect(normalizeRoomCode(null)).toBeNull();
+  });
+});
+
+describe('identity and player-event authorization', () => {
+  it('accepts generated ids and rejects prototype keys', () => {
+    expect(validatePlayerId('Abc_123-xyz')).toBe('Abc_123-xyz');
+    for (const id of ['__proto__', 'constructor', 'prototype', 'toString', 'hasOwnProperty', 'has space', '', 'x'.repeat(51)]) {
+      expect(validatePlayerId(id)).toBe('');
+    }
+  });
+
+  it('only accepts well-formed host secrets', () => {
+    expect(normalizeSecret('0123456789abcdef0123456789abcdef')).toBe(
+      '0123456789abcdef0123456789abcdef',
+    );
+    expect(normalizeSecret('short')).toBe('');
+    expect(normalizeSecret(null)).toBe('');
+  });
+
+  it('hashes the host secret with SHA-256', async () => {
+    await expect(hashSecret('abc')).resolves.toBe(
+      'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
+    );
+  });
+
+  it('drops host-only event types', () => {
+    for (const type of ['START_GAME', 'RESTART_GAME', 'REMOVE_PLAYER', 'UPDATE_ROUNDS']) {
+      expect(stampPlayerEvent({ type, payload: {} }, 'player-1')).toBeNull();
+    }
+  });
+
+  it('stamps the sender id over forged ids and sanitises text', () => {
+    expect(
+      stampPlayerEvent(
+        { type: 'SUBMIT_VOTE', payload: { playerId: 'victim', answerId: 'a1' } },
+        'player-1',
+      ),
+    ).toEqual({ type: 'SUBMIT_VOTE', payload: { playerId: 'player-1', answerId: 'a1' } });
+
+    expect(
+      stampPlayerEvent(
+        { type: 'JOIN_ROOM', payload: { id: 'victim', name: '<b>Bob</b>' } },
+        'player-1',
+      ),
+    ).toEqual({ type: 'JOIN_ROOM', payload: { id: 'player-1', name: 'Bob' } });
+
+    expect(
+      stampPlayerEvent(
+        {
+          type: 'JOIN_ROOM',
+          payload: { id: 'victim', avatarSeed: 'x'.repeat(100), isBot: true },
+        },
+        'player-1',
+      ),
+    ).toEqual({ type: 'JOIN_ROOM', payload: { id: 'player-1', avatarSeed: 'x'.repeat(12) } });
+
+    expect(stampPlayerEvent({ type: 'SEND_EMOTE', payload: { type: 'HACK' } }, 'player-1')).toBeNull();
+
+    expect(
+      stampPlayerEvent(
+        { type: 'SELECT_CATEGORY', payload: { category: 'Film', playerId: 'victim' } },
+        'player-1',
+      ),
+    ).toEqual({ type: 'SELECT_CATEGORY', payload: { category: 'Film', playerId: 'player-1' } });
+  });
+
+  it('only reads the room the socket joined', () => {
+    expect(canReadRoomState('ABCD', 'ABCD')).toBe(true);
+    expect(canReadRoomState('ABCD', null)).toBe(true);
+    expect(canReadRoomState('ABCD', 'WXYZ')).toBe(false);
+    expect(canReadRoomState(null, 'ABCD')).toBe(false);
   });
 });
 
