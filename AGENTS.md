@@ -35,6 +35,11 @@ Railway/Socket.IO to Cloudflare Workers + Durable Objects.
 4. `docs/SERVER_HARDENING.md` — rules to port (caps, rate limits, sanitisation)
 5. `docs/TECHNICAL.md` — audio/TTS pipeline
 
+## Project skills
+
+- `.opencode/skills/design-lab-handoff/` — turns a pasted `/designer` resize
+  request into responsive code at the stated breakpoint (`docs/DESIGN_LAB.md`).
+
 ## Architecture facts
 
 - Game state is authoritative in the **host client**; the backend is a relay plus room
