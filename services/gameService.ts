@@ -608,10 +608,14 @@ export const useGameService = (
       return;
     }
 
-    socketRef.current.emit('getRoomsByHost', { hostId: playerId }, (rooms: any[]) => {
-      import.meta.env.DEV && console.log('[GameService] getRoomsByHost response:', rooms);
-      callback(rooms);
-    });
+    socketRef.current.emit(
+      'getRoomsByHost',
+      { hostId: playerId, hostSecret: getHostSecret() },
+      (rooms: any[]) => {
+        import.meta.env.DEV && console.log('[GameService] getRoomsByHost response:', rooms);
+        callback(Array.isArray(rooms) ? rooms : []);
+      },
+    );
   }, [playerId]);
 
   const checkRoomExists = (roomCode: string, callback: (exists: boolean) => void) => {
@@ -775,16 +779,20 @@ export const useGameService = (
     const adoptOrCreateHostRoom = () => {
       // Only adopt rooms this device can prove it created. Without the host
       // secret the room is not ours to reclaim.
-      client.emit('getRoomsByHost', { hostId: playerId }, (rooms: any) => {
-        if (!Array.isArray(rooms)) return;
-        const hasSecret = !!getHostSecret();
-        const adoptable = [...rooms]
-          .filter((room) => room && typeof room.roomCode === 'string')
-          .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-        const newest = hasSecret ? adoptable.pop() : undefined;
-        if (newest) joinHostRoom(newest.roomCode);
-        else createHostRoom();
-      });
+      client.emit(
+        'getRoomsByHost',
+        { hostId: playerId, hostSecret: getHostSecret() },
+        (rooms: any) => {
+          if (!Array.isArray(rooms)) return;
+          const hasSecret = !!getHostSecret();
+          const adoptable = [...rooms]
+            .filter((room) => room && typeof room.roomCode === 'string')
+            .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+          const newest = hasSecret ? adoptable.pop() : undefined;
+          if (newest) joinHostRoom(newest.roomCode);
+          else createHostRoom();
+        },
+      );
     };
 
     const onConnect = () => {

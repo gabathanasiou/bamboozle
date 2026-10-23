@@ -111,7 +111,7 @@ describe('Directory', () => {
     });
 
     const rooms = await runInDurableObject(directory(), async (instance: Directory) =>
-      instance.roomsByHost(HOST),
+      instance.roomsByHost(HOST, code.hostSecret),
     );
     expect(rooms).toHaveLength(1);
     expect(rooms[0]).toEqual({
@@ -122,6 +122,18 @@ describe('Directory', () => {
       isGracePeriod: false,
       createdAt: expect.any(Number),
     });
+  });
+
+  it('hides rooms from anyone without the host secret', async () => {
+    const code = await create();
+    const rooms = (secret?: string) =>
+      runInDurableObject(directory(), async (instance: Directory) =>
+        instance.roomsByHost(HOST, secret),
+      );
+
+    expect(await rooms()).toEqual([]);
+    expect(await rooms('f'.repeat(32))).toEqual([]);
+    expect(await rooms(code.hostSecret)).toHaveLength(1);
   });
 
   it('self-heals a stale index row', async () => {

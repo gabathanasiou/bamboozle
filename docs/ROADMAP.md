@@ -227,3 +227,9 @@ retired to `docs/ROADMAP-ARCHIVE.md` as **one line**; git history keeps the narr
 - **Verify:** `npm audit` has no high/critical; build, unit, worker and e2e pass; no runtime-reachable advisory.
 - **Relations:** relates 21.
 
+## 38. Require host secret for room discovery (`[ ]`)
+
+- **Request:** `getRoomsByHost` answers with a client-supplied `hostId` alone, so host ids can be enumerated and their room codes/player names disclosed; a first-create squat needs only a victim host id (security review F-02, 2026-10-23).
+- **Approach:** require `hostSecret` on `getRoomsByHost`; compare its SHA-256 against the indexed rows for that host id and return `[]` when absent or wrong. Client sends the stored host secret on discovery/adopt. Files: `workers/bamboozle-rooms/src/directory.ts`, `services/gameService.ts`, tests/smoke.
+- **Verify:** discovery without a secret and with a wrong secret returns `[]`; the owning host still lists its rooms; adopt-or-create and the 2-room cap still work; unit/smoke/e2e pass.
+- **Relations:** fixes review F-02; relates 17.

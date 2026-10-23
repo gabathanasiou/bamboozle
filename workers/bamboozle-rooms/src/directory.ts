@@ -274,7 +274,7 @@ export class Directory {
 
       case 'getRoomsByHost': {
         const hostId = normalizeHostId(data.hostId);
-        ack(hostId ? await this.roomsByHost(hostId) : []);
+        ack(hostId ? await this.roomsByHost(hostId, data.hostSecret) : []);
         return;
       }
 
@@ -586,11 +586,18 @@ export class Directory {
     return true;
   }
 
-  async roomsByHost(rawHostId: string): Promise<RoomSummary[]> {
+  async roomsByHost(rawHostId: string, rawSecret?: unknown): Promise<RoomSummary[]> {
     const hostId = normalizeHostId(rawHostId);
-    if (!hostId) return [];
+    const hostSecret = normalizeSecret(rawSecret);
+    if (!hostId || !hostSecret) return [];
 
     const rows = this.rowsForHost(hostId);
+    if (rows.length === 0) return [];
+    const suppliedHash = await hashSecret(hostSecret);
+    if (!rows.some((row) => !!row.host_secret_hash && timingSafeEqual(suppliedHash, row.host_secret_hash))) {
+      return [];
+    }
+
     const summaries = await Promise.all(
       rows.map(async (row): Promise<RoomSummary | null> => {
         const info = await this.roomInfo(row.code);

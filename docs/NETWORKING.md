@@ -30,7 +30,7 @@ Status: phase 1 — native WebSocket transport for the Cloudflare Worker. Event 
 | Event | Payload | Ack | Behaviour |
 |---|---|---|---|
 | `checkRoom` | `{ roomCode }` | yes | Directory lookup; `{ exists }` |
-| `getRoomsByHost` | `{ hostId }` | yes | Directory rows + fresh room info (`roomCode`, `phase`, `playerCount`, `playerNames`, `isGracePeriod`, `createdAt`) |
+| `getRoomsByHost` | `{ hostId, hostSecret }` | yes | Directory rows + fresh room info (`roomCode`, `phase`, `playerCount`, `playerNames`, `isGracePeriod`, `createdAt`); returns `[]` without the matching host secret |
 | `createRoom` | `{ hostId, hostSecret?, token? }` | yes | Returns `{ roomCode, hostSecret }`; a server-issued 128-bit secret is returned once and required for later rooms under the same host id |
 | `joinRoom` | `{ roomCode, id, role?, name?, hostSecret?, playerSecret? }` | yes | `{ success, state, becameHost, playerSecret? }`; host reclaim needs `hostSecret`, a returning player needs `playerSecret` |
 | `requestState` | `{ roomCode }` | yes | Latest persisted `GameState \| null`; only for the room the socket joined |

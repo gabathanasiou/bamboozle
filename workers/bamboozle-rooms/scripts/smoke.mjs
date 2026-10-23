@@ -314,16 +314,31 @@ async function main() {
     });
     assert(new Set([first.roomCode, second.roomCode, third.roomCode]).size === 3, 'three unique rooms');
 
-    let rooms = await sockets[0].ack('getRoomsByHost', { hostId: capHost });
+    let rooms = await sockets[0].ack('getRoomsByHost', {
+      hostId: capHost,
+      hostSecret: first.hostSecret,
+    });
+    assert(Array.isArray(rooms) && rooms.length === 3, 'host secret lists all rooms');
     const graced = rooms.find((room) => room.roomCode === first.roomCode);
     assert(graced?.isGracePeriod === true, 'oldest is in grace');
+
+    const hidden = await sockets[0].ack('getRoomsByHost', { hostId: capHost });
+    assert(Array.isArray(hidden) && hidden.length === 0, 'room list requires the host secret');
+    const squatted = await sockets[0].ack('getRoomsByHost', {
+      hostId: capHost,
+      hostSecret: 'f'.repeat(32),
+    });
+    assert(Array.isArray(squatted) && squatted.length === 0, 'wrong host secret lists nothing');
 
     const fourthSocket = await Client.connect();
     const fourth = await fourthSocket.ack('createRoom', {
       hostId: capHost,
       hostSecret: first.hostSecret,
     });
-    rooms = await fourthSocket.ack('getRoomsByHost', { hostId: capHost });
+    rooms = await fourthSocket.ack('getRoomsByHost', {
+      hostId: capHost,
+      hostSecret: first.hostSecret,
+    });
     assert(!rooms.some((room) => room.roomCode === first.roomCode), 'oldest closed');
     assert(rooms.some((room) => room.roomCode === fourth.roomCode), '4th room exists');
     sockets.forEach((socket) => socket.close());

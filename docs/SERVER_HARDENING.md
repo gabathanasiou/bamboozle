@@ -49,6 +49,10 @@ per-IP budget of 60 per 10s (held in the Directory isolate) so one address canno
 spray many sockets. Normal play (one action every few seconds) never reaches the
 limit.
 
+`getRoomsByHost` requires a host secret matching the indexed rows for that host
+id. Without it (or with a wrong one) the Directory returns `[]`, so host ids
+cannot be enumerated and other hosts' room codes/player names are not disclosed.
+
 ## 4. Abuse and availability caps
 
 | Cap | Default | Where |
