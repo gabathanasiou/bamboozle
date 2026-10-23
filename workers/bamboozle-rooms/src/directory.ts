@@ -109,7 +109,6 @@ export class Directory {
       );
       CREATE INDEX IF NOT EXISTS rooms_by_host ON rooms(host_id);
       CREATE INDEX IF NOT EXISTS rooms_by_created ON rooms(created_at);
-      CREATE INDEX IF NOT EXISTS rooms_by_create_key ON rooms(host_id, create_key);
 
       CREATE TABLE IF NOT EXISTS tts_budget (
         key TEXT PRIMARY KEY,
@@ -128,20 +127,30 @@ export class Directory {
         value TEXT NOT NULL
       );
     `);
-    // Existing deployments predate these columns.
-    for (const column of [
-      "host_secret_hash TEXT NOT NULL DEFAULT ''",
-      "last_seen INTEGER NOT NULL DEFAULT 0",
-      "create_key TEXT NOT NULL DEFAULT ''",
-    ]) {
-      try {
-        this.ctx.storage.sql.exec(`ALTER TABLE rooms ADD COLUMN ${column}`);
-      } catch {
-        // Column already exists.
+    // Additive columns for deployments that predate them. Check the table
+    // shape first: a blanket try/catch would hide genuine ALTER failures.
+    const columns = new Set(
+      this.ctx.storage.sql
+        .exec<{ name: string }>('PRAGMA table_info(rooms)')
+        .toArray()
+        .map((row) => row.name),
+    );
+    for (const [name, definition] of [
+      ['host_secret_hash', "TEXT NOT NULL DEFAULT ''"],
+      ['last_seen', 'INTEGER NOT NULL DEFAULT 0'],
+      ['create_key', "TEXT NOT NULL DEFAULT ''"],
+    ] as const) {
+      if (!columns.has(name)) {
+        this.ctx.storage.sql.exec(`ALTER TABLE rooms ADD COLUMN ${name} ${definition}`);
       }
     }
-    // Rooms created before last_seen existed are as fresh as their creation.
-    this.ctx.storage.sql.exec('UPDATE rooms SET last_seen = created_at WHERE last_seen = 0');
+    // Only valid once the ALTER above has added create_key.
+    this.ctx.storage.sql.exec(
+      'CREATE INDEX IF NOT EXISTS rooms_by_create_key ON rooms(host_id, create_key)',
+    );
+    // Give rooms that predate last_seen one fresh window instead of reaping
+    // them from their creation time before they can reconnect after a deploy.
+    this.ctx.storage.sql.exec('UPDATE rooms SET last_seen = ? WHERE last_seen = 0', Date.now());
   }
 
   async fetch(request: Request): Promise<Response> {

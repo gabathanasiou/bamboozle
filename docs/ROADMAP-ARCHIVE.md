@@ -29,3 +29,4 @@ never renumber or reuse.**
 | 41 | Drain legacy rooms without host-secret hashes | workers/bamboozle-rooms/src/directory.ts legacy drain; docs/DEPLOYMENT.md rollout note; workers/bamboozle-rooms/test/directory.test.ts |
 | 42 | TTS request budget and streamed body cap | workers/bamboozle-rooms/src/index.ts readJsonBody/allowTtsRequest; src/room.ts narrator; src/directory.ts internalTtsRequest; docs/DEPLOYMENT.md token rotation; workers/bamboozle-rooms/test/index.test.ts |
 | 43 | Surface rejected game state to the host | workers/bamboozle-rooms/src/directory.ts roomError; services/gameService.ts state resync; workers/bamboozle-rooms/scripts/smoke.mjs |
+| 44 | Directory schema upgrade path | workers/bamboozle-rooms/src/directory.ts ensureSchema; workers/bamboozle-rooms/test/directory.test.ts upgrade-schema and idle-sweep tests; docs/audits/2026-10-23-f03-f07-hardening-security-review.md |

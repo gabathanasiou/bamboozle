@@ -2,7 +2,9 @@
 
 > Agent-assisted targeted audit of the merged batch `20b834c` → `0bb3bec`
 > (branch `security-residuals`, PR #1). Read-only: no code was modified by the
-> audit pass. **This is not a penetration test** — findings come from source,
+> audit pass. **Post-review fix:** F-01 and the F-05 backfill were fixed in the
+> follow-up schema hotfix; the findings are retained as the verified pre-fix
+> state. **This is not a penetration test** — findings come from source,
 > configuration and tool output, not live exploitation.
 > Standards referenced: OWASP ASVS 5.0.0, OWASP Top 10.
 > Prior audit: `docs/audits/2026-10-23-room-authority-and-cost-controls-security-review.md`
@@ -17,11 +19,11 @@
 
 | # | Finding | Severity | Priority | Blocks |
 |---|---|---|---|---|
-| F-01 | Directory schema creates an index on `create_key` before the ALTER adds the column; the next Worker deploy breaks every upgraded Directory DO | High | P0 | next Worker deploy |
+| F-01 | Directory schema creates an index on `create_key` before the ALTER adds the column; the next Worker deploy breaks every upgraded Directory DO — **fixed in the follow-up schema hotfix** | High | P0 | next Worker deploy |
 | F-02 | One tenant can exhaust the shared global TTS request budget and silence premium narration for every room | Medium | P2 | scale / paid TTS |
 | F-03 | Legacy drain is client-triggerable and closes unclaimable rooms outside the host's control | Low | P3 | rollout |
 | F-04 | Idempotent create is check-then-act; concurrent retries can create two rooms for one key | Low | P3 | hardening |
-| F-05 | The `last_seen` backfill can reap a pre-existing active room in the deploy window | Low | P3 | rollout |
+| F-05 | The `last_seen` backfill can reap a pre-existing active room in the deploy window — **backfill fixed in the follow-up hotfix** | Low | P3 | rollout |
 | F-06 | First-room secrets are reconstructible from Directory storage (pepper + `create_key`) | Low | P3 | design claim |
 | F-07 | Create retries are charged to the durable per-IP budget; the client surfaces nothing | Low | P3 | hardening |
 | F-08 | `/api/tts` returns raw provider/exception text to the token holder | Low | P3 | hardening |
@@ -30,10 +32,11 @@
 
 **Verdict:** The batch materially improves the design (durable create budget,
 idempotent replay, idle reap, streamed body cap, state-rejection signal), and the
-existing host/player secret controls are intact. It is **not deploy-ready**:
-F-01 will break the Directory DO on the next `wrangler deploy` over the existing
-production namespace; fix and add an upgrade test before deploying. F-02 is the
-next availability concern; the rest are hardening.
+existing host/player secret controls are intact. It was **not deploy-ready as
+merged**: F-01 would break the Directory DO on the next `wrangler deploy` over
+the existing production namespace; the follow-up schema hotfix addresses it (and
+the F-05 backfill), with upgrade and idle-sweep tests. F-02 is the next
+availability concern; the rest are hardening.
 
 ## 2. Scope & method
 
@@ -111,6 +114,10 @@ next availability concern; the rest are hardening.
 - **Verification:** Independent verifier confirmed the ordering, workerd
   behaviour and test gap, confidence 9; lead reproduced the SQLite failure and
   re-read lines 98-144. Confidence 9.
+
+**Post-review fix:** the index now runs after the ALTER/backfill, the ALTERs are
+driven by `PRAGMA table_info(rooms)` instead of a catch-all, and an upgrade test
+seeds the pre-batch table shape before calling `ensureSchema()`.
 
 ### F-02 — Shared global TTS request budget can silence all premium narration · Medium · P2 · verified
 
@@ -219,6 +226,10 @@ next availability concern; the rest are hardening.
 - **Effort:** S.
 - **Verification:** Independent verifier confirmed the mechanism and narrowed
   the claim to the deploy window, confidence 8. Confidence 8.
+
+**Post-review fix:** the backfill now stamps `Date.now()` (one fresh 6h window
+for pre-existing rooms), and an idle-sweep test asserts a recently active room
+survives while an idle one is closed.
 
 ### F-06 — First-room secret is reconstructible from Directory storage · Low · P3 · verified
 
