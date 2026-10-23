@@ -5,8 +5,8 @@ import {
   MAX_FRAME_BYTES,
   canReadRoomState,
   consumeRate,
-  hashHostSecret,
-  normalizeHostSecret,
+  hashSecret,
+  normalizeSecret,
   normalizeRoomCode,
   parseClientMessage,
   sanitize,
@@ -84,15 +84,15 @@ describe('identity and player-event authorization', () => {
   });
 
   it('only accepts well-formed host secrets', () => {
-    expect(normalizeHostSecret('0123456789abcdef0123456789abcdef')).toBe(
+    expect(normalizeSecret('0123456789abcdef0123456789abcdef')).toBe(
       '0123456789abcdef0123456789abcdef',
     );
-    expect(normalizeHostSecret('short')).toBe('');
-    expect(normalizeHostSecret(null)).toBe('');
+    expect(normalizeSecret('short')).toBe('');
+    expect(normalizeSecret(null)).toBe('');
   });
 
   it('hashes the host secret with SHA-256', async () => {
-    await expect(hashHostSecret('abc')).resolves.toBe(
+    await expect(hashSecret('abc')).resolves.toBe(
       'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
     );
   });

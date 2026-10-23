@@ -96,6 +96,12 @@ When a host disconnects and rejoins:
 6. The full state is broadcast to re-sync all players.
 7. `resumeGameProgression()` restarts any mid-phase game logic.
 
+### Player Reconnection / Resume
+The first join mints a per-player resume secret; the client stores it per room.
+On reconnect `joinRoom` presents it, the room verifies the hash, binds the new
+socket, and closes the replaced socket. A socket without the secret gets
+`PLAYER_SECRET_REQUIRED`; its `playerEvent`s and disconnect calls are rejected.
+
 ## Online Friends Mode
 This mode merges the "Big Screen" visuals with the "Controller" inputs.
 - Defined in `plan.md`.

@@ -32,7 +32,7 @@ Status: phase 1 — native WebSocket transport for the Cloudflare Worker. Event 
 | `checkRoom` | `{ roomCode }` | yes | Directory lookup; `{ exists }` |
 | `getRoomsByHost` | `{ hostId }` | yes | Directory rows + fresh room info (`roomCode`, `phase`, `playerCount`, `playerNames`, `isGracePeriod`, `createdAt`) |
 | `createRoom` | `{ hostId, hostSecret?, token? }` | yes | Returns `{ roomCode, hostSecret }`; a server-issued 128-bit secret is returned once and required for later rooms under the same host id |
-| `joinRoom` | `{ roomCode, id, role?, name?, hostSecret? }` | yes | `{ success, state, becameHost }`; host reclaim inside grace requires `hostSecret` |
+| `joinRoom` | `{ roomCode, id, role?, name?, hostSecret?, playerSecret? }` | yes | `{ success, state, becameHost, playerSecret? }`; host reclaim needs `hostSecret`, a returning player needs `playerSecret` |
 | `requestState` | `{ roomCode }` | yes | Latest persisted `GameState \| null`; only for the room the socket joined |
 | `gameStateUpdate` | `{ roomCode, gameState }` | no | Host-only; strips `hostId`, persists (≤ every 5s) and broadcasts to everyone else |
 | `hostEvent` | `{ roomCode, event }` | no | Host-only relay (narration, host UI actions) |
@@ -58,6 +58,7 @@ Status: phase 1 — native WebSocket transport for the Cloudflare Worker. Event 
 - The **host client is authoritative**. The room DO stores the latest `GameState` and relays it; it does not compute game rules.
 - `hostId` is **never** included in room state (join, broadcast or `requestState`). It is not an auth credential.
 - The host credential is a server-generated 128-bit secret, returned once by `createRoom` and stored on the host device. Only its SHA-256 hash is kept in room meta. `joinRoom` must present it to reclaim host inside grace; knowing `hostId` is not enough.
+- Every player/audience row gets its own server-generated 128-bit resume secret on first join; only its hash is stored. The join ack returns the secret once, the client stores it per room, and every later join of that id must present it. A socket that does not own the current `socket_id` cannot send `playerEvent` or trigger the player's disconnect/kick.
 - `createRoom` requires the same secret before it may create another room for an existing host id, or grace/close any of that host's rooms.
 - Persistence is throttled: a write happens on phase change, when 5s have elapsed, and immediately when host grace starts (so a reconnect never receives a minimal/stale state).
 - Roster/room metadata is read from the room DO. `playerNames` comes from the last persisted state; it can lag up to 5s.
@@ -100,7 +101,7 @@ reserved keys (`__proto__`, `constructor`, `prototype`) are rejected.
 2. Host sends `createRoom` (or `getRoomsByHost` then `joinRoom`); players send `joinRoom`.
 3. `joinRoom` acks with the current state; clients render it.
 4. On transport loss the adapter retries with exponential backoff (0.5s → 8s, jitter, unlimited) and emits `connect`/`disconnect`.
-5. On reconnect, `gameService` re-sends `joinRoom`; the host presents the stored host secret, reclaims inside grace, players cancel their kick, and both receive the latest state.
+5. On reconnect, `gameService` re-sends `joinRoom`; the host presents the stored host secret, players present their per-room resume secret, and both receive the latest state.
 6. After a full reload, `PlayerView` offers **JOIN LAST GAME** from `bamboozle_room_code` immediately; a failed join clears the stale code.
 6. On close, the Directory informs the room DO. Host close → `hostDisconnected` + 60s grace; player close → `playerDisconnected` + 60s kick; last socket out → empty-room grace.
 

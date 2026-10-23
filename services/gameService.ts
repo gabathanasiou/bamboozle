@@ -48,6 +48,7 @@ const joinNames = (names: string[], language: Language): string => {
 
 const STORAGE_KEY = 'bamboozle_used_questions';
 const HOST_SECRET_KEY = 'bamboozle_host_secret';
+const PLAYER_SECRET_PREFIX = 'bamboozle_player_secret_';
 const MAX_PLAYERS = 6;
 // SOCKET_URL moved inside hook to be dynamic
 
@@ -84,6 +85,42 @@ const forgetHostSecret = (): void => {
   } catch {
     // Ignore.
   }
+};
+
+const playerSecretKey = (roomCode: string) => `${PLAYER_SECRET_PREFIX}${roomCode}`;
+const getPlayerSecret = (roomCode: string): string => {
+  if (!roomCode) return '';
+  try {
+    return localStorage.getItem(playerSecretKey(roomCode)) || '';
+  } catch {
+    return '';
+  }
+};
+const storePlayerSecret = (roomCode: string, secret: string): void => {
+  if (!roomCode || !secret) return;
+  try {
+    localStorage.setItem(playerSecretKey(roomCode), secret);
+  } catch {
+    // Ignore.
+  }
+};
+const forgetPlayerSecret = (roomCode: string): void => {
+  if (!roomCode) return;
+  try {
+    localStorage.removeItem(playerSecretKey(roomCode));
+  } catch {
+    // Ignore.
+  }
+};
+const resetPlayerIdentity = (roomCode: string): void => {
+  try {
+    localStorage.removeItem('bamboozle_player_id');
+    localStorage.removeItem('bamboozle_room_code');
+    forgetPlayerSecret(roomCode);
+  } catch {
+    // Ignore.
+  }
+  window.location.reload();
 };
 
 /** Null-prototype map so `__proto__` can never reach Object.prototype. */
@@ -764,23 +801,34 @@ export const useGameService = (
       // reconnect, re-join the room we were already in.
       const roomCode = stateRef.current.roomCode;
       if (!roomCode) return;
-      client.emit('joinRoom', { roomCode, id: playerId }, (response: any) => {
-        if (!response?.success) {
-          console.error('[GameService] Failed to rejoin room:', response?.error);
-          if (response?.error === 'Room not found') {
-            localStorage.removeItem('bamboozle_room_code');
-            setRoomClosed(true);
+      client.emit(
+        'joinRoom',
+        { roomCode, id: playerId, playerSecret: getPlayerSecret(roomCode) },
+        (response: any) => {
+          if (!response?.success) {
+            console.error('[GameService] Failed to rejoin room:', response?.error);
+            if (response?.error === 'Room not found') {
+              localStorage.removeItem('bamboozle_room_code');
+              setRoomClosed(true);
+            } else if (response?.error === 'PLAYER_SECRET_REQUIRED') {
+              // This device cannot prove the old seat is ours. Start as a new
+              // player instead of leaving a permanent invalid identity.
+              resetPlayerIdentity(roomCode);
+            }
+            return;
           }
-          return;
-        }
-        if (response.becameHost) {
-          applyReclaimedHost(roomCode, response.state);
-          return;
-        }
-        const recovered = normalizeState(response.state);
-        stateRef.current = recovered;
-        setState(recovered);
-      });
+          if (typeof response.playerSecret === 'string' && response.playerSecret) {
+            storePlayerSecret(roomCode, response.playerSecret);
+          }
+          if (response.becameHost) {
+            applyReclaimedHost(roomCode, response.state);
+            return;
+          }
+          const recovered = normalizeState(response.state);
+          stateRef.current = recovered;
+          setState(recovered);
+        },
+      );
     };
 
     client.on('connect', onConnect);
@@ -1979,8 +2027,22 @@ export const useGameService = (
 
   // Exposed Actions
   const joinRoom = (roomCode: string, callback?: (success: boolean, error?: string, becameHost?: boolean) => void) => {
-    socketRef.current?.emit('joinRoom', { roomCode, id: playerId }, (response: any) => {
-      if (response.success) {
+    socketRef.current?.emit(
+      'joinRoom',
+      { roomCode, id: playerId, playerSecret: getPlayerSecret(roomCode) },
+      (response: any) => {
+        if (!response?.success) {
+          if (response?.error === 'PLAYER_SECRET_REQUIRED') {
+            resetPlayerIdentity(roomCode);
+            return;
+          }
+          if (callback) callback(false, response?.error);
+          return;
+        }
+
+        if (typeof response.playerSecret === 'string' && response.playerSecret) {
+          storePlayerSecret(roomCode, response.playerSecret);
+        }
         // Update both stateRef and setState to ensure everything is in sync
         const recovered = normalizeState(response.state);
         stateRef.current = recovered;
@@ -2021,10 +2083,8 @@ export const useGameService = (
         // Save code on successful join
         import.meta.env.DEV && console.log('[GameService] Joined room:', roomCode, '. Saving to localStorage.');
         localStorage.setItem('bamboozle_room_code', roomCode);
-      } else {
-        if (callback) callback(false, response.error);
-      }
-    });
+      },
+    );
   };
 
   const sendJoin = (name: string, avatarSeed: string) => {

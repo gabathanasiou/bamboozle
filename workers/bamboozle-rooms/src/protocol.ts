@@ -12,7 +12,7 @@ export const MAX_TTS_LENGTH = 500;
 export const MAX_EVENTS_PER_WINDOW = 20;
 export const EVENT_RATE_WINDOW = 10_000;
 export const MAX_CONCURRENT_ROOMS_PER_HOST = 2;
-export const HOST_SECRET_BYTES = 16;
+export const SECRET_BYTES = 16;
 
 export type Role = 'HOST' | 'PLAYER' | 'AUDIENCE';
 
@@ -41,7 +41,7 @@ const SENDER_ID_EVENTS = new Set([
 ]);
 
 const PLAYER_ID_RE = /^[A-Za-z0-9_-]{1,50}$/;
-const HOST_SECRET_RE = /^[A-Za-z0-9_-]{16,128}$/;
+const SECRET_RE = /^[A-Za-z0-9_-]{16,128}$/;
 const RESERVED_PLAYER_IDS = new Set([
   '__proto__',
   'prototype',
@@ -186,19 +186,19 @@ export function validatePlayerId(value: unknown): string {
   return id;
 }
 
-export function normalizeHostSecret(value: unknown): string {
+export function normalizeSecret(value: unknown): string {
   if (typeof value !== 'string') return '';
   const secret = value.trim();
-  return HOST_SECRET_RE.test(secret) ? secret : '';
+  return SECRET_RE.test(secret) ? secret : '';
 }
 
-export function randomHostSecret(): string {
-  const bytes = new Uint8Array(HOST_SECRET_BYTES);
+export function randomSecret(): string {
+  const bytes = new Uint8Array(SECRET_BYTES);
   crypto.getRandomValues(bytes);
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-export async function hashHostSecret(secret: string): Promise<string> {
+export async function hashSecret(secret: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(secret));
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }

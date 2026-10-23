@@ -130,6 +130,7 @@ async function main() {
   const hostId = `smoke-host-${Date.now()}`;
   let roomCode;
   let hostSecret;
+  let playerSecret;
   let host = await Client.connect();
   let player = await Client.connect();
   let audience = await Client.connect();
@@ -160,6 +161,8 @@ async function main() {
       name: 'Smoke Audience',
     });
     assert(playerResult.success === true, 'player join');
+    playerSecret = playerResult.playerSecret;
+    assert(/^[a-f0-9]{32}$/.test(playerSecret || ''), 'player resume secret');
     assert(audienceResult.success === true, 'audience join');
     assert(same(playerResult.state, audienceResult.state), 'join states identical');
   });
@@ -202,6 +205,30 @@ async function main() {
     player.close();
     const received = await host.wait('playerDisconnected');
     assert(received.playerId === 'smoke-player', 'playerDisconnected payload');
+  });
+
+  await step('player identity requires the resume secret', async () => {
+    const attacker = await Client.connect();
+    const denied = await attacker.ack('joinRoom', {
+      roomCode,
+      id: 'smoke-player',
+      role: 'PLAYER',
+    });
+    assert(
+      denied?.error === 'PLAYER_SECRET_REQUIRED',
+      `expected PLAYER_SECRET_REQUIRED, got ${JSON.stringify(denied)}`,
+    );
+    attacker.close();
+
+    const resumed = await Client.connect();
+    const result = await resumed.ack('joinRoom', {
+      roomCode,
+      id: 'smoke-player',
+      role: 'PLAYER',
+      playerSecret,
+    });
+    assert(result.success === true, `player resumed: ${JSON.stringify(result)}`);
+    resumed.close();
   });
 
   await step('server-side player cap', async () => {

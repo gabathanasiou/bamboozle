@@ -103,6 +103,13 @@ allowlist is relayed, sender ids are stamped from the socket attachment, and
 host-only types are rejected in both the room DO and the host reducer. Category
 selection is allowed only when the stamped sender is the current selector.
 
+Player identity is not taken from the client id alone. The first join mints a
+per-player 128-bit resume secret (hash stored in the player row), returned once
+and required on every later join of that id. The row also stores the owning
+`socket_id`; `playerEvent` and `disconnect` are accepted only from that socket,
+so a second socket cannot impersonate the player or kick them. A successful
+reconnect closes the replaced socket via Directory `/internal/close-socket`.
+
 ## 7. TTS cost protection
 
 - GCS cache is checked first; a hit costs one metadata request and no TTS billing.

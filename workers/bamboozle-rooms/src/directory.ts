@@ -15,14 +15,14 @@ import {
   RATE_LIMITED_EVENTS,
   READ_EVENTS,
   consumeRate,
-  hashHostSecret,
+  hashSecret,
   isPlayerEventType,
   normalizeHostId,
-  normalizeHostSecret,
+  normalizeSecret,
   normalizeRoomCode,
   normalizeRole,
   parseClientMessage,
-  randomHostSecret,
+  randomSecret,
   sanitize,
   timingSafeEqual,
   validatePlayerId,
@@ -127,6 +127,7 @@ export class Directory {
       if (url.pathname === '/internal/room-closed') return await this.internalRoomClosed(request);
       if (url.pathname === '/internal/room-meta') return await this.internalRoomMeta(request);
       if (url.pathname === '/internal/demote') return await this.internalDemote(request);
+      if (url.pathname === '/internal/close-socket') return await this.internalCloseSocket(request);
       if (url.pathname === '/internal/tts-budget') return await this.internalTtsBudget(request);
       return json({ error: 'NOT_FOUND' }, 404);
     } catch (error) {
@@ -364,7 +365,8 @@ export class Directory {
           role,
           name: sanitize(data.name, 12),
           socketId: attachment.socketId,
-          hostSecret: normalizeHostSecret(data.hostSecret),
+          hostSecret: normalizeSecret(data.hostSecret),
+          playerSecret: normalizeSecret(data.playerSecret),
         });
         if (!response.ok) {
           const result = (await response.json().catch(() => ({}))) as { error?: string };
@@ -375,6 +377,7 @@ export class Directory {
         const result = (await response.json()) as {
           state?: unknown;
           becameHost?: boolean;
+          playerSecret?: string;
         };
         const becameHost = result.becameHost === true;
         attachment.roomCode = code;
@@ -382,7 +385,12 @@ export class Directory {
         attachment.role = becameHost ? 'HOST' : role === 'AUDIENCE' ? 'AUDIENCE' : 'PLAYER';
         attachment.isHost = becameHost;
         ws.serializeAttachment(attachment);
-        ack({ success: true, state: result.state ?? null, becameHost });
+        ack({
+          success: true,
+          state: result.state ?? null,
+          becameHost,
+          playerSecret: result.playerSecret,
+        });
         return;
       }
 
@@ -507,22 +515,22 @@ export class Directory {
     if (totalRooms >= maxTotalRooms(this.env)) throw new Error('ROOM_LIMIT_GLOBAL');
 
     let rows = this.rowsForHost(hostId);
-    let hostSecret = normalizeHostSecret(suppliedSecret);
+    let hostSecret = normalizeSecret(suppliedSecret);
     let hostSecretHash = '';
 
     if (rows.length > 0) {
       // Every room for a host shares one server-issued secret. It is required
       // before createRoom may create, grace or close any of them.
       if (!hostSecret) throw new Error('HOST_SECRET_REQUIRED');
-      const suppliedHash = await hashHostSecret(hostSecret);
+      const suppliedHash = await hashSecret(hostSecret);
       const match = rows.find(
         (row) => !!row.host_secret_hash && timingSafeEqual(suppliedHash, row.host_secret_hash),
       );
       if (!match) throw new Error('HOST_SECRET_REQUIRED');
       hostSecretHash = match.host_secret_hash;
     } else {
-      hostSecret = randomHostSecret();
-      hostSecretHash = await hashHostSecret(hostSecret);
+      hostSecret = randomSecret();
+      hostSecretHash = await hashSecret(hostSecret);
     }
 
     if (rows.length >= 3) {
@@ -877,6 +885,21 @@ export class Directory {
       if (attachment?.socketId === socketId) {
         attachment.isHost = false;
         socket.serializeAttachment(attachment);
+      }
+    }
+    return json({ ok: true });
+  }
+
+  private async internalCloseSocket(request: Request): Promise<Response> {
+    const body = await readJson(request);
+    const socketId = sanitize(body.socketId, 128);
+    if (!socketId) return json({ ok: true });
+    for (const socket of this.ctx.getWebSockets()) {
+      if (this.attachment(socket)?.socketId !== socketId) continue;
+      try {
+        socket.close(4001, 'player resumed on another socket');
+      } catch {
+        // Already gone.
       }
     }
     return json({ ok: true });

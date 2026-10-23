@@ -1,6 +1,6 @@
 import { env, runDurableObjectAlarm, runInDurableObject } from 'cloudflare:test';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { hashHostSecret } from '../src/protocol';
+import { hashSecret } from '../src/protocol';
 import type { BambooRoom } from '../src/room';
 
 const ROOM = 'ABCD';
@@ -23,7 +23,7 @@ async function initRoom(): Promise<void> {
     roomCode: ROOM,
     hostId: HOST,
     hostSocketId: HOST_SOCKET,
-    hostSecretHash: await hashHostSecret(HOST_SECRET),
+    hostSecretHash: await hashSecret(HOST_SECRET),
   });
   expect(response.status).toBe(200);
 }
@@ -34,8 +34,9 @@ async function join(
   role = 'PLAYER',
   name = 'Player',
   hostSecret?: string,
+  playerSecret?: string,
 ): Promise<any> {
-  const response = await call('/internal/join', { playerId, socketId, role, name, hostSecret });
+  const response = await call('/internal/join', { playerId, socketId, role, name, hostSecret, playerSecret });
   expect(response.status).toBe(200);
   return response.json();
 }
@@ -46,8 +47,9 @@ async function joinStatus(
   role = 'PLAYER',
   name = 'Player',
   hostSecret?: string,
+  playerSecret?: string,
 ): Promise<Response> {
-  return call('/internal/join', { playerId, socketId, role, name, hostSecret });
+  return call('/internal/join', { playerId, socketId, role, name, hostSecret, playerSecret });
 }
 
 /** Move a 60s deadline into the past so runDurableObjectAlarm has due work. */
@@ -82,7 +84,7 @@ describe('BambooRoom', () => {
       roomCode: ROOM,
       hostId: HOST,
       hostSocketId: HOST_SOCKET,
-      hostSecretHash: await hashHostSecret(HOST_SECRET),
+      hostSecretHash: await hashSecret(HOST_SECRET),
     });
     expect(response.status).toBe(409);
   });
@@ -91,6 +93,41 @@ describe('BambooRoom', () => {
     const result = await join('player-1', 'sock-player', 'PLAYER', '<b>Bob</b>');
     expect(result).toMatchObject({ success: true, becameHost: false });
     expect(result.state.roomCode).toBe(ROOM);
+  });
+
+  it('binds a player to a resume secret and socket', async () => {
+    const first = await join('player-1', 'sock-1', 'PLAYER', 'Bob');
+    expect(first.playerSecret).toMatch(/^[a-f0-9]{32}$/);
+
+    expect((await joinStatus('player-1', 'sock-evil')).status).toBe(403);
+    expect(
+      (await joinStatus('player-1', 'sock-evil', 'PLAYER', 'Evil', undefined, 'f'.repeat(32))).status,
+    ).toBe(403);
+
+    const resumed = await join('player-1', 'sock-2', 'PLAYER', 'Bob', undefined, first.playerSecret);
+    expect(resumed.success).toBe(true);
+
+    const oldSocketEvent = await call('/internal/player-event', {
+      senderId: 'player-1',
+      socketId: 'sock-1',
+      event: { type: 'SUBMIT_LIE', payload: { playerId: 'player-1', text: 'x' } },
+    });
+    expect(oldSocketEvent.status).toBe(403);
+
+    // Closing the replaced socket must not kick the live player.
+    await call('/internal/disconnect', { socketId: 'sock-1', playerId: 'player-1' });
+    const currentSocketEvent = await call('/internal/player-event', {
+      senderId: 'player-1',
+      socketId: 'sock-2',
+      event: { type: 'SUBMIT_LIE', payload: { playerId: 'player-1', text: 'x' } },
+    });
+    expect(currentSocketEvent.status).toBe(200);
+
+    await call('/internal/disconnect', { socketId: 'sock-2', playerId: 'player-1' });
+    const row = await runInDurableObject(stub(), (_instance: BambooRoom, state) =>
+      state.storage.sql.exec('SELECT connected FROM players WHERE id = ?', 'player-1').toArray()[0],
+    );
+    expect(row).toMatchObject({ connected: 0 });
   });
 
   it('lets only the current host socket update state', async () => {
@@ -178,10 +215,10 @@ describe('BambooRoom', () => {
     await join('p2', 's2');
     expect((await joinStatus('p3', 's3')).status).toBe(409);
 
-    await join('a1', 'sa1', 'AUDIENCE');
+    const a1 = await join('a1', 'sa1', 'AUDIENCE');
     await join('a2', 'sa2', 'AUDIENCE');
     expect((await joinStatus('a3', 'sa3', 'AUDIENCE')).status).toBe(409);
-    expect((await joinStatus('a1', 'sa1', 'PLAYER')).status).toBe(409);
+    expect((await joinStatus('a1', 'sa1', 'PLAYER', 'Player', undefined, a1.playerSecret)).status).toBe(409);
   });
 
   it('rejects an oversized game state', async () => {
