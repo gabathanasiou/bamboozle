@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-    Copy, Crown, Dice5, Download, Eye, FileJson, Home, LogIn, Megaphone, PenLine,
+    AlignCenter, AlignJustify, AlignLeft, AlignRight,
+    Copy, Crown, Download, Eye, FileJson, Home, LogIn, Megaphone, PenLine,
     Play, RotateCw, ScanLine, Settings as SettingsIcon, Shapes, Trash2, Trophy, Users, Vote,
     WifiOff, Wrench,
 } from 'lucide-react';
@@ -14,12 +15,13 @@ import type {
     GameView,
     ResizeChange,
     ScreenId,
+    SelectedStyleProperty,
     TextLength,
     ViewportConfig,
 } from './types';
 import type { DeepPartial } from './bridge';
 import {
-    SCREENS, SCREEN_GROUPS, TEXT_LENGTH_OPTIONS, VIEW_OPTIONS, VIEWPORT_BY_PRESET, VIEWPORT_GROUPS,
+    SCREENS, SCREEN_GROUPS, TEXT_LENGTH_OPTIONS, VIEW_OPTIONS,
     getCopy, isGameScreen,
 } from './catalog';
 import {
@@ -31,9 +33,20 @@ const ICONS: Record<string, LucideIcon> = {
     Vote, Eye, Trophy, Crown,
 };
 
+const ALIGN_OPTIONS = [
+    { value: 'left', label: 'Left', Icon: AlignLeft },
+    { value: 'center', label: 'Center', Icon: AlignCenter },
+    { value: 'right', label: 'Right', Icon: AlignRight },
+    { value: 'justify', label: 'Justify', Icon: AlignJustify },
+] as const;
+
+const isActiveAlign = (current: string, value: string) => (
+    current === value || (value === 'left' && current === 'start')
+);
+
 const SelectedStyleInputs: React.FC<{
     selectedElement: DesignerElementInfo;
-    onSetStyle: (property: 'fontSize' | 'lineHeight', value: string) => void;
+    onSetStyle: (property: SelectedStyleProperty, value: string) => void;
 }> = ({ selectedElement, onSetStyle }) => {
     const [fontSize, setFontSize] = useState(parseFloat(selectedElement.fontSize) || 0);
     const [lineHeight, setLineHeight] = useState(parseFloat(selectedElement.lineHeight) || 0);
@@ -65,6 +78,28 @@ const SelectedStyleInputs: React.FC<{
                     onSetStyle('lineHeight', value > 0 ? `${value}px` : 'normal');
                 }}
             />
+            <div className="col-span-2 space-y-1">
+                <div className="text-[9px] font-bold uppercase tracking-wide text-slate-500">Text align</div>
+                <div className="flex gap-1 rounded-lg border border-white/10 bg-black/20 p-1">
+                    {ALIGN_OPTIONS.map(({ value, label, Icon }) => {
+                        const active = isActiveAlign(selectedElement.textAlign, value);
+                        return (
+                            <button
+                                key={value}
+                                type="button"
+                                title={`Align ${label.toLowerCase()}`}
+                                aria-pressed={active}
+                                onClick={() => onSetStyle('textAlign', value)}
+                                className={`flex flex-1 items-center justify-center rounded-md py-1.5 transition-colors ${
+                                    active ? 'bg-yellow-400 text-black' : 'text-slate-400 hover:bg-white/10 hover:text-slate-200'
+                                }`}
+                            >
+                                <Icon size={13} />
+                            </button>
+                        );
+                    })}
+                </div>
+            </div>
         </div>
     );
 };
@@ -90,10 +125,7 @@ interface ControlPanelProps {
     onScreenChange: (screen: ScreenId) => void;
     onViewChange: (view: GameView) => void;
     onContentLengthChange: (length: TextLength) => void;
-    onViewportChange: (width: number, height: number, preset: string) => void;
-    onRotate: () => void;
     onReset: () => void;
-    onRandomize: () => void;
     onCopyBrief: () => void;
     onCopyJson: () => void;
     onApplyJson: (json: string) => void;
@@ -104,7 +136,7 @@ interface ControlPanelProps {
     onRevealIssue: (selector: string) => void;
     onResetElementSize: () => void;
     onResetAllSizes: () => void;
-    onSetSelectedStyle: (property: 'fontSize' | 'lineHeight', value: string) => void;
+    onSetSelectedStyle: (property: SelectedStyleProperty, value: string) => void;
     onCopyResizeRequest: () => void;
     onClearOverrides: () => void;
 }
@@ -119,10 +151,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     onScreenChange,
     onViewChange,
     onContentLengthChange,
-    onViewportChange,
-    onRotate,
     onReset,
-    onRandomize,
     onCopyBrief,
     onCopyJson,
     onApplyJson,
@@ -165,9 +194,6 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     const setGame = (patch: DeepPartial<DesignerConfig['game']>) => onChange({ game: patch });
     const setApp = (patch: DeepPartial<DesignerConfig['app']>) => onChange({ app: patch });
     const setPreview = (patch: DeepPartial<DesignerConfig['preview']>) => onChange({ preview: patch });
-    const setViewport = (width: number, height: number, preset = 'custom') => {
-        onViewportChange(width, height, preset);
-    };
     const setCopyOverride = (key: 'fact' | 'category' | 'answer', value: string) => {
         onChange({ overrides: { [key]: value } as DeepPartial<DesignerConfig['overrides']> });
     };
@@ -177,7 +203,6 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     const setNameOverride = (index: number, value: string) => {
         onChange({ overrides: { names: { ...(config.overrides.names ?? {}), [index]: value } } });
     };
-    const viewportPreset = VIEWPORT_BY_PRESET[config.viewport.preset];
     const hasOverrides = Object.keys(config.overrides).length > 0;
 
     return (
@@ -527,39 +552,6 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 </LabSection>
             )}
 
-            <LabSection title="Viewport" subtitle="Real iframe size, not a scaled div" defaultOpen>
-                <LabSelect
-                    label="Preset"
-                    value={config.viewport.preset}
-                    groups={[
-                        ...VIEWPORT_GROUPS,
-                        { label: 'Custom', options: [{ value: 'custom', label: 'Custom size' }] },
-                    ]}
-                    onChange={(preset) => {
-                        if (preset === 'custom') {
-                            onViewportChange(config.viewport.width, config.viewport.height, 'custom');
-                            return;
-                        }
-                        const next = VIEWPORT_BY_PRESET[preset];
-                        if (next) onViewportChange(next.width, next.height, next.preset);
-                    }}
-                />
-                <div className="grid grid-cols-2 gap-2">
-                    <LabNumber label="Width" value={config.viewport.width} min={320} max={3840} onChange={(width) => setViewport(width, config.viewport.height)} />
-                    <LabNumber label="Height" value={config.viewport.height} min={320} max={2160} onChange={(height) => setViewport(config.viewport.width, height)} />
-                </div>
-                <LabButton onClick={onRotate} fullWidth>
-                    <RotateCw size={12} /> Rotate {viewportPreset ? `(${viewportPreset.label})` : ''}
-                </LabButton>
-                <LabButton onClick={onRandomize} fullWidth>
-                    <Dice5 size={12} /> Randomize state
-                </LabButton>
-                <div className="text-[9px] leading-relaxed text-slate-600">
-                    Live element edits persist when you switch viewport, so you can compare the same
-                    adjusted design at another size. Use Reset all to return to the natural responsive layout.
-                </div>
-            </LabSection>
-
             <LabSection title="Inspect" subtitle="Overflow, outlines and element details" defaultOpen={false}>
                 <div className="grid grid-cols-2 gap-2">
                     <LabToggle label="Inspect" checked={config.preview.inspect} onChange={(inspect) => setPreview({ inspect })} />
@@ -608,19 +600,20 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                             <span className="text-[10px] font-black uppercase tracking-wide text-sky-200">Selected element</span>
                             <div className="flex items-center gap-1">
                                 <LabButton onClick={() => onCopyText(selectedElement.selector)} variant="ghost"><Copy size={11} /> Selector</LabButton>
-                                <LabButton onClick={onResetElementSize} variant="ghost"><RotateCw size={11} /> Reset size</LabButton>
+                                <LabButton onClick={onResetElementSize} variant="ghost" title="Reset size, type and alignment"><RotateCw size={11} /> Reset</LabButton>
                             </div>
                         </div>
                         <div className="break-all font-mono text-[9px] text-sky-200/70">{selectedElement.selector}</div>
                         <div className="grid grid-cols-2 gap-1 font-mono text-[9px] text-slate-400">
                             <span>{Math.round(selectedElement.rect.width)}×{Math.round(selectedElement.rect.height)}</span>
                             <span>{selectedElement.fontSize}/{selectedElement.lineHeight}</span>
+                            <span className="capitalize">align {selectedElement.textAlign}</span>
                             <span>overflow {selectedElement.overflowX}/{selectedElement.overflowY}</span>
                             <span>scroll {selectedElement.scrollWidth}×{selectedElement.scrollHeight}</span>
                         </div>
                         {selectedElement.text && <div className="line-clamp-3 text-[10px] text-slate-500">{selectedElement.text}</div>}
                         <SelectedStyleInputs selectedElement={selectedElement} onSetStyle={onSetSelectedStyle} />
-                        <div className="text-[9px] text-sky-300/50">Live size and type are preview-only; ask the agent to make them permanent.</div>
+                        <div className="text-[9px] text-sky-300/50">Live size, type and alignment are preview-only; ask the agent to make them permanent.</div>
                     </div>
                 )}
 
@@ -642,6 +635,9 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                                     {change.before.width}×{change.before.height} → {change.after.width}×{change.after.height}
                                     {' · '}
                                     {change.before.fontSize} → {change.after.fontSize}
+                                    {change.before.textAlign !== change.after.textAlign
+                                        ? ` · ${change.before.textAlign}→${change.after.textAlign}`
+                                        : ''}
                                     {change.similarCount > 1 ? ` · ${change.similarCount} similar` : ''}
                                 </div>
                             </button>

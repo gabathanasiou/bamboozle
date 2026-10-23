@@ -70,6 +70,7 @@ export const describeElement = (element: HTMLElement): DesignerElementInfo => {
         rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
         fontSize: style.fontSize,
         lineHeight: style.lineHeight,
+        textAlign: style.textAlign,
         color: style.color,
         backgroundColor: style.backgroundColor,
         overflowX: style.overflowX,

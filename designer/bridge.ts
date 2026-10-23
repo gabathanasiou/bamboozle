@@ -8,6 +8,7 @@ import {
     RevealOutcome,
     ResizeChange,
     ScreenId,
+    SelectedStyleProperty,
 } from './types';
 import { SCREEN_BY_ID, VIEW_BY_VALUE } from './catalog';
 
@@ -249,6 +250,11 @@ export const getAgentBrief = (
                 `- \`${change.selector}\``,
                 `  - box ${change.before.width}×${change.before.height} → ${change.after.width}×${change.after.height}`,
                 `  - font ${change.before.fontSize}/${change.before.lineHeight} → ${change.after.fontSize}/${change.after.lineHeight}`,
+            );
+            if (change.before.textAlign !== change.after.textAlign) {
+                lines.push(`  - align ${change.before.textAlign} → ${change.after.textAlign}`);
+            }
+            lines.push(
                 `  - viewport ${change.viewport.width}×${change.viewport.height} · ${change.viewport.breakpoint} breakpoint`,
                 `  - similar elements: ${change.similarCount}`,
                 `  - text: ${change.text || '(none)'}`,
@@ -283,6 +289,11 @@ export const buildResizeRequest = (
                 `- \`${change.selector}\``,
                 `  - box ${change.before.width}×${change.before.height} → ${change.after.width}×${change.after.height}`,
                 `  - font ${change.before.fontSize}/${change.before.lineHeight} → ${change.after.fontSize}/${change.after.lineHeight}`,
+            );
+            if (change.before.textAlign !== change.after.textAlign) {
+                lines.push(`  - align ${change.before.textAlign} → ${change.after.textAlign}`);
+            }
+            lines.push(
                 `  - similar elements: ${change.similarCount}`,
                 `  - text: ${change.text || '(none)'}`,
             );
@@ -305,7 +316,7 @@ export type ParentToPreviewMessage =
     | { type: 'designer:export-png' }
     | { type: 'designer:reset-element-size' }
     | { type: 'designer:reset-all-element-sizes' }
-    | { type: 'designer:set-selected-style'; property: 'fontSize' | 'lineHeight'; value: string }
+    | { type: 'designer:set-selected-style'; property: SelectedStyleProperty; value: string }
     | { type: 'designer:history-action'; action: 'undo' | 'redo' }
     | { type: 'designer:reveal-element'; selector: string };
 

@@ -574,7 +574,7 @@ export const OnlinePlayerView: React.FC<OnlinePlayerViewProps> = ({
                         <div className="absolute top-2 right-2 bg-black/50 px-3 py-1 rounded-full border border-white/20 backdrop-blur-md z-50">
                             <div className="flex items-center gap-2">
                                 <Clock size={16} className="text-yellow-400 animate-pulse" />
-                                <span className="font-mono font-bold text-lg text-white">{state.timeLeft}</span>
+                                <span className="font-mono font-bold text-2xl leading-7 text-white">{state.timeLeft}</span>
                             </div>
                         </div>
                         <CategoryRoulette
@@ -587,21 +587,21 @@ export const OnlinePlayerView: React.FC<OnlinePlayerViewProps> = ({
                 {/* 3. WRITING (And INTRO) */}
                 {(state.phase === GamePhase.WRITING || state.phase === GamePhase.INTRO) && (
                     <div className="flex-1 flex flex-col items-center justify-center p-4 min-h-0 w-full">
-                        <div className="w-full max-w-md flex flex-col items-center gap-4">
+                        <div className="w-full max-w-md md:max-w-2xl flex flex-col items-center gap-4">
 
                             {/* Stats Header */}
                             <div className="w-full flex items-center justify-between px-1 pb-1 relative z-20 flex-shrink-0">
                                 <div className="flex items-center gap-2">
-                                    <div className="bg-purple-600/90 text-white text-[10px] font-black uppercase px-2 py-1 rounded-lg border-2 border-purple-400 shadow-sm">
+                                    <div className="bg-purple-600/90 text-white text-[10px] md:text-xl font-black uppercase px-2 py-1 rounded-lg border-2 border-purple-400 shadow-sm">
                                         {isFinalRound ? getText(state.language, 'GAME_FINAL_ROUND') : getText(state.language, 'GAME_ROUND', { current: state.currentRound, total: state.totalRounds })}
                                     </div>
                                     {(state.currentRound === state.totalRounds) && (
-                                        <div className="bg-yellow-400 text-black text-[10px] font-black uppercase px-2 py-1 rounded-lg border-2 border-white shadow-sm animate-pulse">
+                                        <div className="bg-yellow-400 text-black text-[10px] md:text-xl font-black uppercase px-2 py-1 rounded-lg border-2 border-white shadow-sm animate-pulse">
                                             {getText(state.language, 'GAME_TRIPLE_POINTS')}
                                         </div>
                                     )}
                                     {(state.currentRound === state.totalRounds - 1) && (
-                                        <div className="bg-yellow-400 text-black text-[10px] font-black uppercase px-2 py-1 rounded-lg border-2 border-white shadow-sm animate-pulse">
+                                        <div className="bg-yellow-400 text-black text-[10px] md:text-xl font-black uppercase px-2 py-1 rounded-lg border-2 border-white shadow-sm animate-pulse">
                                             {getText(state.language, 'GAME_DOUBLE_POINTS')}
                                         </div>
                                     )}
@@ -614,7 +614,7 @@ export const OnlinePlayerView: React.FC<OnlinePlayerViewProps> = ({
 
                             {/* Fact Card */}
                             <div className="w-full bg-white text-purple-900 p-4 md:p-6 rounded-2xl md:rounded-3xl shadow-xl border-b-4 md:border-b-8 border-purple-300 relative z-10 min-h-[13vh] flex items-center justify-center">
-                                <p className={`font-black leading-tight uppercase text-center break-words ${getAdaptiveTextClass(state.currentQuestion?.fact.replace('<BLANK>', '________') || '', 'text-base md:text-2xl', 80)}`}>
+                                <p className={`font-black leading-tight uppercase text-center break-words text-base md:text-2xl ${getAdaptiveTextClass(state.currentQuestion?.fact.replace('<BLANK>', '________') || '', 'text-base md:text-2xl', 80)}`}>
                                     {state.currentQuestion?.fact.replace('<BLANK>', '________')}
                                 </p>
                             </div>
@@ -676,17 +676,17 @@ export const OnlinePlayerView: React.FC<OnlinePlayerViewProps> = ({
                 {state.phase === GamePhase.VOTING && (
                     <div className="flex-1 flex flex-col items-center w-full h-full overflow-hidden relative">
                         {/* Fixed Header */}
-                        <div className="shrink-0 w-full max-w-md p-3 pb-2 flex flex-col items-center z-10">
+                        <div className="shrink-0 w-full max-w-md md:max-w-2xl p-3 pb-2 flex flex-col items-center z-10">
                             {/* Timer */}
                             <div className="flex justify-center mb-4 relative z-30">
                                 <div className="flex items-center gap-2 bg-black/60 backdrop-blur-md px-4 py-1 rounded-full border border-white/20 shadow-lg">
                                     <Clock size={18} className="text-yellow-400 animate-pulse" />
-                                    <span className="font-mono font-bold text-md text-white">{state.timeLeft}s</span>
+                                    <span className="font-mono font-bold text-md md:text-2xl md:leading-9 text-white">{state.timeLeft}s</span>
                                 </div>
                             </div>
 
                             <div className="w-full bg-purple-800/50 p-4 mb-4 justify-center items-center rounded-xl border border-white/10 backdrop-blur-sm shadow-md text-center max-h-[20vh] min-h-[10vh] overflow-y-auto">
-                                <p className={`font-bold text-white leading-tight uppercase ${getAdaptiveTextClass(state.currentQuestion?.fact.replace('<BLANK>', '________') || '', 'text-lg', 75)}`}>
+                                <p className={`font-bold text-white leading-tight uppercase text-base md:text-2xl ${getAdaptiveTextClass(state.currentQuestion?.fact.replace('<BLANK>', '________') || '', 'text-base md:text-2xl', 75)}`}>
                                     {state.currentQuestion?.fact.replace('<BLANK>', '________')}
                                 </p>
                             </div>
@@ -695,7 +695,7 @@ export const OnlinePlayerView: React.FC<OnlinePlayerViewProps> = ({
                         {/* Answers Grid - Scrollable */}
                         <div
                             ref={answersRef}
-                            className="flex-1 w-full overflow-y-auto px-2 pb-4 no-scrollbar flex justify-center min-h-0"
+                            className="flex-1 w-full overflow-y-auto px-2 pb-4 no-scrollbar flex justify-center min-h-0 md:mx-auto md:max-w-2xl lg:max-w-none"
                         >
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 w-full pb-8 h-max">
                                 {state.roundAnswers.filter(a => !a.authorIds.includes(playerId)).map((ans, idx) => {
@@ -724,7 +724,7 @@ export const OnlinePlayerView: React.FC<OnlinePlayerViewProps> = ({
                                               `}
                                         >
                                             <div className="relative z-10 flex flex-col w-full justify-center items-center h-full px-2">
-                                                <span className={`leading-tight text-center w-full break-words whitespace-normal drop-shadow-sm ${getAdaptiveTextClass(ans.text, 'text-md :text-lg', 30)}`}>{ans.text}</span>
+                                                <span className={`leading-tight text-center w-full break-words whitespace-normal drop-shadow-sm text-base md:text-2xl ${getAdaptiveTextClass(ans.text, 'text-base md:text-2xl', 30)}`}>{ans.text}</span>
                                             </div>
 
                                             {/* Audience Indicator - Absolute Top Right */}

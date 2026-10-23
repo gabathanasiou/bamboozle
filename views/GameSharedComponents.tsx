@@ -217,7 +217,7 @@ export const CategoryRoulette = ({ state, onSelect }: { state: GameState, onSele
     return (
         <div className="flex flex-col items-center justify-start flex-1 min-h-0 w-full z-30 relative px-4">
             <div className="mt-2 text-center max-w-2xl mx-auto flex-shrink-0 pt-2 md:pt-0">
-                <h2 className="text-xs md:text-xl text-purple-200 uppercase tracking-widest font-black drop-shadow-sm mb-1">{getText(state.language, 'GAME_CATEGORY_SELECTION')}</h2>
+                <h2 className="text-2xl text-purple-200 uppercase tracking-widest font-black drop-shadow-sm mb-1">{getText(state.language, 'GAME_CATEGORY_SELECTION')}</h2>
                 <div className="flex flex-col items-center">
                     <span className="text-yellow-400 font-black text-2xl md:text-4xl uppercase tracking-tighter drop-shadow-xl leading-tight">{selectorName}</span>
                     <span className="text-white text-[10px] md:text-lg font-black uppercase tracking-[0.3em] mb-1 opacity-50">{onSelect ? getText(state.language, 'GAME_PICK_CATEGORY') : getText(state.language, 'GAME_IS_CHOOSING')}</span>

@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Expand, RotateCw, ScanLine } from 'lucide-react';
-import type { DesignerConfig, DesignerDiagnostics, DesignerElementInfo, ResizeChange } from './types';
+import { Dice5, Expand, RotateCw, ScanLine } from 'lucide-react';
+import type { DesignerConfig, DesignerDiagnostics, DesignerElementInfo, ResizeChange, SelectedStyleProperty } from './types';
 import type { ParentToPreviewMessage, PreviewToParentMessage } from './bridge';
-import { VIEWPORT_BY_PRESET } from './catalog';
+import { VIEWPORT_BY_PRESET, VIEWPORT_GROUPS } from './catalog';
+import { breakpointForWidth } from './bridge';
 
 interface PreviewFrameProps {
     config: DesignerConfig;
@@ -17,14 +18,57 @@ interface PreviewFrameProps {
     exportNonce: number;
     resetElementNonce: number;
     resetAllNonce: number;
-    styleRequest: { property: 'fontSize' | 'lineHeight'; value: string; nonce: number } | null;
+    styleRequest: { property: SelectedStyleProperty; value: string; nonce: number } | null;
     historyAction: { action: 'undo' | 'redo'; nonce: number } | null;
     revealRequest: { selector: string; nonce: number } | null;
     onToggleInspect: () => void;
     onScan: () => void;
+    onRandomize: () => void;
 }
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+const ViewportSizeInput: React.FC<{
+    label: string;
+    value: number;
+    min: number;
+    max: number;
+    onCommit: (value: number) => void;
+}> = ({ label, value, min, max, onCommit }) => {
+    const [draft, setDraft] = useState(String(value));
+
+    useEffect(() => {
+        setDraft(String(value));
+    }, [value]);
+
+    const commit = () => {
+        const parsed = Number(draft);
+        const next = draft.trim() !== '' && Number.isFinite(parsed) ? clamp(Math.round(parsed), min, max) : value;
+        setDraft(String(next));
+        if (next !== value) onCommit(next);
+    };
+
+    return (
+        <input
+            type="number"
+            aria-label={label}
+            title={label}
+            value={draft}
+            min={min}
+            max={max}
+            onChange={(event) => setDraft(event.target.value)}
+            onBlur={commit}
+            onKeyDown={(event) => {
+                if (event.key === 'Enter') event.currentTarget.blur();
+                if (event.key === 'Escape') {
+                    setDraft(String(value));
+                    event.currentTarget.blur();
+                }
+            }}
+            className="w-12 bg-transparent text-center font-mono text-[10px] text-slate-200 outline-none"
+        />
+    );
+};
 
 export const PreviewFrame: React.FC<PreviewFrameProps> = ({
     config,
@@ -44,6 +88,7 @@ export const PreviewFrame: React.FC<PreviewFrameProps> = ({
     revealRequest,
     onToggleInspect,
     onScan,
+    onRandomize,
 }) => {
     const iframeRef = useRef<HTMLIFrameElement | null>(null);
     const containerRef = useRef<HTMLDivElement | null>(null);
@@ -219,14 +264,57 @@ export const PreviewFrame: React.FC<PreviewFrameProps> = ({
         };
     }, [isResizing, resizeAxis]);
 
-    const viewportLabel = VIEWPORT_BY_PRESET[config.viewport.preset]?.label ?? 'Custom viewport';
-
     return (
         <div className="flex min-h-0 flex-1 flex-col">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-black/20 px-4 py-2">
-                <div className="flex items-center gap-2 text-[10px] text-slate-400">
-                    <span className="font-bold uppercase tracking-[0.14em] text-slate-300">{viewportLabel}</span>
-                    <span className="font-mono text-slate-500">{config.viewport.width}×{config.viewport.height}</span>
+                <div className="flex flex-wrap items-center gap-2">
+                    <select
+                        value={config.viewport.preset}
+                        onChange={(event) => {
+                            const preset = event.target.value;
+                            if (preset === 'custom') {
+                                onViewportChange(config.viewport.width, config.viewport.height, 'custom');
+                                return;
+                            }
+                            const next = VIEWPORT_BY_PRESET[preset];
+                            if (next) onViewportChange(next.width, next.height, next.preset);
+                        }}
+                        aria-label="Viewport preset"
+                        title="Viewport preset"
+                        className="max-w-[280px] rounded-md border border-white/10 bg-[#111827] px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-200 outline-none focus:border-yellow-400/60"
+                    >
+                        {VIEWPORT_GROUPS.map((group) => (
+                            <optgroup key={group.label} label={group.label}>
+                                {group.options.map((option) => (
+                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                ))}
+                            </optgroup>
+                        ))}
+                        <optgroup label="Custom">
+                            <option value="custom">Custom size</option>
+                        </optgroup>
+                    </select>
+                    <div
+                        className="flex items-center gap-0.5 rounded-md border border-white/10 bg-white/5 px-1 py-0.5"
+                        title="Live element edits persist when you switch viewport. Reset all restores the natural layout."
+                    >
+                        <ViewportSizeInput
+                            label="Viewport width"
+                            value={config.viewport.width}
+                            min={320}
+                            max={3840}
+                            onCommit={(width) => onViewportChange(width, config.viewport.height, 'custom')}
+                        />
+                        <span className="text-[9px] text-slate-600">×</span>
+                        <ViewportSizeInput
+                            label="Viewport height"
+                            value={config.viewport.height}
+                            min={320}
+                            max={2160}
+                            onCommit={(height) => onViewportChange(config.viewport.width, height, 'custom')}
+                        />
+                    </div>
+                    <span className="rounded border border-white/10 px-1.5 py-0.5 font-mono text-[9px] text-slate-500">{breakpointForWidth(config.viewport.width)}</span>
                     <span className="rounded border border-white/10 px-1.5 py-0.5 font-mono text-[9px] text-slate-500">{Math.round(scale * 100)}%</span>
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -261,6 +349,14 @@ export const PreviewFrame: React.FC<PreviewFrameProps> = ({
                         title="Re-scan layout"
                     >
                         Scan
+                    </button>
+                    <button
+                        type="button"
+                        onClick={onRandomize}
+                        className="flex items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[9px] font-bold uppercase tracking-wide text-slate-400 hover:bg-white/10"
+                        title="Randomize fixture state"
+                    >
+                        <Dice5 size={12} /> Random
                     </button>
                 </div>
             </div>
